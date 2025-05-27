@@ -9,18 +9,17 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 __nccwpck_require__.r(__webpack_exports__);
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(7297);
-/* harmony import */ var docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _src__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(3939);
 
 
 
 
 try {
-  if (!docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1__.IsPost) {
-    await (0,docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1__.setup)()
+  if (!_src__WEBPACK_IMPORTED_MODULE_1__/* .IsPost */ .dZ) {
+    await (0,_src__WEBPACK_IMPORTED_MODULE_1__/* .setup */ .mj)()
   }
   else {
-    await (0,docker_sidecar_action_src__WEBPACK_IMPORTED_MODULE_1__.cleanup)()
+    await (0,_src__WEBPACK_IMPORTED_MODULE_1__/* .cleanup */ .tP)()
   }
 } catch (error) {
   _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(`Action failed with error: ${error.message}`);
@@ -25673,10 +25672,174 @@ module.exports = {
 
 /***/ }),
 
-/***/ 7297:
-/***/ ((module) => {
+/***/ 3939:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
-module.exports = eval("require")("docker-sidecar-action/src");
+"use strict";
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  dZ: () => (/* binding */ IsPost),
+  tP: () => (/* reexport */ cleanup),
+  mj: () => (/* reexport */ setup)
+});
+
+// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
+var core = __nccwpck_require__(7484);
+// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
+var exec = __nccwpck_require__(5236);
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
+;// CONCATENATED MODULE: ./src/post.js
+
+
+
+
+async function cleanup() {
+  // Get sidecar ID from state
+  const sidecarId = core.getState("sidecar-id");
+
+  if (!sidecarId) {
+    core.warning("No sidecar ID found in state, nothing to clean up");
+    return;
+  }
+
+  core.info(`Shutting down sidecar with ID: ${sidecarId}`);
+
+  // Create shutdown signal file
+  external_fs_.writeFileSync("shutdown-signal.txt", "shutdown=true");
+
+  // Upload shutdown signal artifact
+  const uploadParams = [
+    "run", "upload",
+    "--name", `sidecar-${sidecarId}-shutdown`,
+    "--repo", process.env.GITHUB_REPOSITORY,
+    "shutdown-signal.txt",
+  ];
+
+  await exec.exec("gh", uploadParams);
+
+  core.info(`Shutdown signal sent to sidecar ${sidecarId}`);
+}
+
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(6928);
+// EXTERNAL MODULE: external "crypto"
+var external_crypto_ = __nccwpck_require__(6982);
+;// CONCATENATED MODULE: ./src/setup.js
+
+
+
+
+
+
+async function setup() {
+  // Generate a unique ID for this sidecar instance
+  const sidecarId = external_crypto_.randomUUID();
+  core.setOutput("sidecar-id", sidecarId);
+
+  // Save sidecar ID for post cleanup
+  core.saveState("sidecar-id", sidecarId);
+
+  // Get timeout from inputs
+  const timeout = core.getInput("timeout");
+
+  core.info(`Starting Linux Docker sidecar with ID: ${sidecarId}`);
+
+  // Check for GitHub CLI
+  try {
+    await exec.exec("gh", ["--version"]);
+  } catch (error) {
+    core.error("GitHub CLI not found. Please install it using actions/setup-gh");
+    throw new Error("GitHub CLI is required for this action");
+  }
+
+  // Start the Linux sidecar workflow
+  const workflowParams = [
+    "workflow", "run", "linux-sidecar.yml",
+    "-f", `sidecar_id=${sidecarId}`,
+    "-f", `timeout=${timeout}`,
+    "--ref", process.env.GITHUB_REF,
+    "--repo", process.env.GITHUB_REPOSITORY,
+  ];
+
+  await exec.exec("gh", workflowParams);
+
+  // Wait for sidecar to start and provide connection details
+  core.info("Waiting for sidecar to start...");
+
+  const maxAttempts = 30;
+  let attempt = 0;
+  let sidecarStarted = false;
+
+  while (attempt < maxAttempts) {
+    attempt++;
+
+    try {
+      // Try to download the connection details artifact
+      const downloadParams = [
+        "run", "download",
+        "--name", `sidecar-${sidecarId}-details`,
+        "--repo", process.env.GITHUB_REPOSITORY,
+      ];
+
+      const exitCode = await exec.exec("gh", downloadParams, { ignoreReturnCode: true });
+
+      if (exitCode === 0) {
+        core.info("Sidecar started successfully");
+        sidecarStarted = true;
+        break;
+      }
+    } catch (error) {
+      // Ignore error and retry
+    }
+
+    core.info(`Waiting for sidecar to start (attempt ${attempt}/${maxAttempts})...`);
+    await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+  }
+
+  if (!sidecarStarted) {
+    throw new Error("Timed out waiting for sidecar to start");
+  }
+
+  // Read connection details
+  const details = external_fs_.readFileSync("sidecar-details.env", "utf8");
+  const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
+
+  core.setOutput("docker-host", dockerHost);
+  core.exportVariable("DOCKER_HOST", dockerHost);
+
+  // Download Docker certificates
+  const certParams = [
+    "run", "download",
+    "--name", "docker-certs",
+    "--repo", process.env.GITHUB_REPOSITORY,
+  ];
+
+  await exec.exec("gh", certParams);
+
+  // Set certificate path
+  const certPath = external_path_.join(process.cwd(), "docker-certs");
+  core.setOutput("docker-cert-path", certPath);
+  core.exportVariable("DOCKER_CERT_PATH", certPath);
+
+  // Set TLS verification
+  if (core.getInput("tlsVerify") === "true") {
+    core.exportVariable("DOCKER_TLS_VERIFY", "1");
+  }
+
+  // Test Docker connection
+  core.info("Testing Docker connection...");
+  await exec.exec("docker", ["info"]);
+
+  core.info("Docker sidecar setup complete");
+}
+
+;// CONCATENATED MODULE: ./src/index.js
+
+
+const IsPost = !!core.getState('isPost');
+
 
 
 /***/ }),

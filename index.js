@@ -4,7 +4,7 @@ import {
   setup,
   cleanup,
   IsPost,
-} from "docker-sidecar-action/src";
+} from "./src";
 
 try {
   if (!IsPost) {
