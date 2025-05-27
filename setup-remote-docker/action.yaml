@@ -1,0 +1,551 @@
+name: 'Set up Remote Docker'
+description: 'Set up a Linux remote Docker for Windows and macOS runners with optional SMB share support'
+
+inputs:
+  docker-connection-artifact-name:
+    description: 'Name of the Docker connection artifacts to download'
+    default: 'docker-conn-details'
+    required: false
+  private-key:
+    description: 'SSH private key content for sidecar ssh authentication'
+    required: false
+    default: ''
+  private-key-path:
+    description: 'Path to the SSH private key file for sidecar ssh authentication'
+    required: false
+    default: ''
+  use-remote-share:
+    description: 'Enable SMB share mounting for file sharing between local and remote environments'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    # ===================================================================
+    # STEP 1: Docker Client Installation (macOS only)
+    # ===================================================================
+    - name: Install Docker client on macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        echo "::group::🐳 Installing Docker client on macOS"
+        
+        # Check if Docker is already installed
+        if command -v docker >/dev/null 2>&1; then
+          echo "✅ Docker client is already installed"
+          echo "📋 Current version: $(docker --version)"
+        else
+          echo "📦 Installing Docker client via Homebrew..."
+        
+          # Verify Homebrew is available
+          if ! command -v brew >/dev/null 2>&1; then
+            echo "❌ Homebrew not found. This action requires Homebrew for Docker installation on macOS."
+            echo "Please install Homebrew first: https://brew.sh/"
+            exit 1
+          fi
+        
+          # Install Docker via Homebrew
+          if brew install --cask docker; then
+            echo "✅ Docker client installed successfully"
+            echo "📋 Installed version: $(docker --version)"
+          else
+            echo "❌ Failed to install Docker client via Homebrew"
+            exit 1
+          fi
+        fi
+        
+        echo "::endgroup::"
+
+    # ===================================================================
+    # STEP 2: SMB Share Configuration (Optional)
+    # ===================================================================
+    - name: Configure SMB share parameters
+      shell: bash
+      id: smb_share
+      if: inputs.use-remote-share == 'true'
+      run: |
+        echo "::group::📁 Configuring SMB share parameters"
+        
+        # Get current working directory and prepare paths
+        LOCAL_PATH=$(pwd)
+        MOUNT_PATH=$(pwd)
+        SMB_USER=$(whoami)
+        
+        # Windows-specific path handling
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          echo "🪟 Windows environment detected - adjusting paths"
+          LOCAL_PATH=$(cygpath -w "$LOCAL_PATH" 2>/dev/null || echo "$LOCAL_PATH")
+          MOUNT_PATH="/mnt$MOUNT_PATH"
+          SMB_USER="smbuser"
+        fi
+        
+        # Generate random port and share name for security
+        SMB_PORT=$((49152 + RANDOM % 16384))  # Use ephemeral port range
+        SHARE_NAME="workspace_share_$(date +%s)_$RANDOM"  # Timestamp + random for uniqueness
+        SHARE_PASS="SecurePass_$(date +%s)_$RANDOM!"  # Generate secure password
+        
+        # Export configuration to outputs
+        {
+          echo "smb_port=$SMB_PORT"
+          echo "smb_remote_fwd=$SMB_PORT:localhost:445"
+          echo "local_path=$LOCAL_PATH"
+          echo "mount_path=$MOUNT_PATH"
+          echo "share_name=$SHARE_NAME"
+          echo "share_user=$SMB_USER"
+          echo "share_pass=$SHARE_PASS"
+        } >> $GITHUB_OUTPUT
+        
+        echo "📋 SMB Configuration:"
+        echo "  • Local path: $LOCAL_PATH"
+        echo "  • Mount path: $MOUNT_PATH"
+        echo "  • Share name: $SHARE_NAME"
+        echo "  • SMB port: $SMB_PORT"
+        echo "  • SMB user: $SMB_USER"
+        
+        echo "::endgroup::"
+
+    # Setup local SMB share
+    - name: Setup local SMB share
+      uses: lexbritvin/smb-share-action@v1
+      if: inputs.use-remote-share == 'true'
+      with:
+        path: ${{ steps.smb_share.outputs.local_path }}
+        share-name: ${{ steps.smb_share.outputs.share_name }}
+        share-user: ${{ steps.smb_share.outputs.share_user }}
+        share-pass: ${{ steps.smb_share.outputs.share_pass }}
+
+    # ===================================================================
+    # STEP 3: Wait for Docker Sidecar and Download Artifacts
+    # ===================================================================
+    - name: Wait for Docker sidecar to start
+      uses: lexbritvin/wait-action@v1
+      with:
+        condition-type: 'artifact'
+        artifact-name: ${{ inputs.docker-connection-artifact-name }}
+        timeout-seconds: 300
+
+    - name: Download Docker connection artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.docker-connection-artifact-name }}
+        path: ${{ inputs.docker-connection-artifact-name }}
+
+    # ===================================================================
+    # STEP 4: Load and Validate Connection Details
+    # ===================================================================
+    - name: Load and validate connection details
+      id: connection
+      shell: bash
+      env:
+        INPUT_DOCKER_ARTIFACT: ${{ inputs.docker-connection-artifact-name }}
+      run: |
+        echo "::group::📋 Loading connection details"
+
+        # Define required files
+        DOCKER_CONFIG_FILE="$INPUT_DOCKER_ARTIFACT/docker-connection-details.env"
+        SSH_CONFIG_FILE="$INPUT_DOCKER_ARTIFACT/ssh-connection-details.env"
+        KNOWN_HOSTS_FILE="$INPUT_DOCKER_ARTIFACT/ssh-known-hosts.txt"
+
+        # Validate required files exist
+        echo "🔍 Validating required configuration files..."
+        
+        if [[ ! -f "$DOCKER_CONFIG_FILE" ]]; then
+          echo "❌ Docker connection details not found: $DOCKER_CONFIG_FILE"
+          exit 1
+        fi
+        echo "✅ Docker configuration found"
+
+        if [[ ! -f "$SSH_CONFIG_FILE" ]]; then
+          echo "❌ SSH connection details not found: $SSH_CONFIG_FILE"
+          exit 1
+        fi
+        echo "✅ SSH configuration found"
+
+        # Load configuration files
+        echo "📥 Loading Docker connection configuration..."
+        set -a  # Automatically export all variables
+        source "$DOCKER_CONFIG_FILE"
+        set +a
+        
+        echo "📥 Loading SSH connection configuration..."
+        set -a
+        source "$SSH_CONFIG_FILE"
+        set +a
+
+        # Process known hosts
+        if [[ -f "$KNOWN_HOSTS_FILE" ]]; then
+          KNOWN_HOSTS_CONTENT=$(cat "$KNOWN_HOSTS_FILE")
+          if [[ -n "$KNOWN_HOSTS_CONTENT" ]]; then
+            echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
+            echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "✅ Known hosts loaded successfully"
+          else
+            echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+            echo "⚠️ ssh-known-hosts.txt is empty"
+          fi
+        else
+          echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+          echo "⚠️ ssh-known-hosts.txt not found - SSH host verification may fail"
+        fi
+
+        # Validate required variables
+        echo "🔍 Validating required variables..."
+        required_vars=("SSH_HOST" "SSH_PORT" "SSH_USER" "DOCKER_HOST" "DOCKER_PORT")
+        for var in "${required_vars[@]}"; do
+          if [[ -z "${!var}" ]]; then
+            echo "❌ Required variable $var is not set"
+            exit 1
+          fi
+        done
+        echo "✅ All required variables are present"
+
+        # Export SSH connection details
+        {
+          echo "ssh_host=$SSH_HOST"
+          echo "ssh_port=$SSH_PORT"
+          echo "ssh_user=$SSH_USER"
+        } >> $GITHUB_OUTPUT
+        
+        # Build SSH jump host string
+        ssh_jump_string=""
+        if [[ -n "$SSH_JUMP_HOST" ]]; then
+          ssh_jump_string="$SSH_JUMP_HOST"
+          if [[ -n "$SSH_JUMP_USER" ]]; then
+            ssh_jump_string="${SSH_JUMP_USER}@${ssh_jump_string}"
+          fi
+          if [[ -n "$SSH_JUMP_PORT" ]]; then
+            ssh_jump_string="${ssh_jump_string}:${SSH_JUMP_PORT}"
+          fi
+          echo "🔗 Jump host configured: $ssh_jump_string"
+        fi
+        echo "ssh_jump_string=$ssh_jump_string" >> $GITHUB_OUTPUT
+
+        # Export Docker configuration to environment
+        {
+          echo "DOCKER_HOST=$DOCKER_HOST"
+          echo "DOCKER_TLS_VERIFY=${DOCKER_TLS_VERIFY:-0}"
+        } >> $GITHUB_ENV
+
+        # Export Docker connection details
+        docker_endpoint="${DOCKER_HOST#tcp://}"  # Remove tcp:// prefix
+        {
+          echo "docker_endpoint=$docker_endpoint"
+          echo "docker_port=$DOCKER_PORT"
+        } >> $GITHUB_OUTPUT
+
+        # Log configuration summary
+        echo "📋 Connection Summary:"
+        echo "  • Docker host: $DOCKER_HOST"
+        echo "  • TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
+        echo "  • SSH target: $SSH_USER@$SSH_HOST:$SSH_PORT"
+        if [[ -n "$ssh_jump_string" ]]; then
+          echo "  • SSH jump host: $ssh_jump_string"
+        fi
+
+        echo "::endgroup::"
+
+    # ===================================================================
+    # STEP 5: Setup Docker TLS Certificates (if enabled)
+    # ===================================================================
+    - name: Setup Docker TLS certificates
+      shell: bash
+      env:
+        INPUT_DOCKER_ARTIFACT: ${{ inputs.docker-connection-artifact-name }}
+      run: |
+        echo "::group::🔐 Setting up Docker TLS certificates"
+        
+        # Check if TLS is enabled
+        if [[ "${DOCKER_TLS_VERIFY}" != "1" ]]; then
+          echo "🔓 TLS verification disabled - skipping certificate setup"
+          echo "::endgroup::"
+          exit 0
+        fi
+        
+        echo "🔒 TLS verification enabled - setting up certificates"
+        
+        TLS_CERT_DIR="$INPUT_DOCKER_ARTIFACT/tls-certificates"
+        
+        # Validate TLS certificates directory exists
+        if [[ ! -d "$TLS_CERT_DIR" ]]; then
+          echo "❌ TLS certificates directory not found: $TLS_CERT_DIR"
+          exit 1
+        fi
+        
+        # Create local certificates directory
+        LOCAL_CERT_DIR="docker-certs"
+        mkdir -p "$LOCAL_CERT_DIR"
+        
+        # Copy certificates
+        echo "📥 Copying TLS certificates..."
+        if ! cp "$TLS_CERT_DIR"/* "$LOCAL_CERT_DIR"/; then
+          echo "❌ Failed to copy TLS certificates"
+          exit 1
+        fi
+        
+        # Set certificate path with OS compatibility
+        cert_path="${PWD}/$LOCAL_CERT_DIR"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          # Convert Unix path to Windows path format for Git Bash/MSYS2
+          cert_path=$(cygpath -w "$cert_path" 2>/dev/null || echo "$cert_path")
+        fi
+        
+        echo "DOCKER_CERT_PATH=$cert_path" >> $GITHUB_ENV
+        
+        # Verify required certificate files exist
+        echo "🔍 Validating certificate files..."
+        required_certs=("ca.pem" "cert.pem" "key.pem")
+        for cert_file in "${required_certs[@]}"; do
+          cert_path_full="$LOCAL_CERT_DIR/$cert_file"
+          if [[ ! -f "$cert_path_full" ]]; then
+            echo "❌ Required certificate file missing: $cert_file"
+            exit 1
+          fi
+          echo "✅ $cert_file found"
+        done
+        
+        echo "🔐 Docker TLS certificates configured successfully"
+        echo "📁 Certificate path: $cert_path"
+        
+        echo "::endgroup::"
+
+    # ===================================================================
+    # STEP: Save Docker Environment Variables to System Profile
+    # ===================================================================
+    - name: Save Docker environment variables to system profile
+      shell: bash
+      run: |
+        echo "💾 Saving Docker environment variables to system profile"
+        
+        # Validate DOCKER_HOST is set
+        if [[ -z "${DOCKER_HOST:-}" ]]; then
+          echo "❌ DOCKER_HOST not set"
+          exit 1
+        fi
+        
+        echo "📋 Saving: DOCKER_HOST=${DOCKER_HOST}"
+        
+        case "$RUNNER_OS" in
+          "Linux"|"macOS")
+            # Remove existing Docker entries
+            if [[ "$RUNNER_OS" == "macOS" ]]; then
+              sudo sed -i '' '/export DOCKER_HOST/d' /etc/profile 2>/dev/null || true
+              sudo sed -i '' '/export DOCKER_TLS_VERIFY/d' /etc/profile 2>/dev/null || true
+              sudo sed -i '' '/export DOCKER_CERT_PATH/d' /etc/profile 2>/dev/null || true
+            else
+              sudo sed -i '/export DOCKER_HOST/d' /etc/profile 2>/dev/null || true
+              sudo sed -i '/export DOCKER_TLS_VERIFY/d' /etc/profile 2>/dev/null || true
+              sudo sed -i '/export DOCKER_CERT_PATH/d' /etc/profile 2>/dev/null || true
+            fi
+        
+            # Add Docker environment variables
+            echo "export DOCKER_HOST=\"${DOCKER_HOST}\"" | sudo tee -a /etc/profile
+            echo "export DOCKER_TLS_VERIFY=\"${DOCKER_TLS_VERIFY:-0}\"" | sudo tee -a /etc/profile
+            [[ -n "${DOCKER_CERT_PATH:-}" ]] && echo "export DOCKER_CERT_PATH=\"${DOCKER_CERT_PATH}\"" | sudo tee -a /etc/profile
+        
+            echo "✅ Saved to /etc/profile"
+            echo "To use: source /etc/profile"
+            ;;
+        
+          "Windows")
+            # Set system environment variables
+            setx DOCKER_HOST "${DOCKER_HOST}" //M 2>/dev/null
+            setx DOCKER_TLS_VERIFY "${DOCKER_TLS_VERIFY:-0}" //M 2>/dev/null
+            [[ -n "${DOCKER_CERT_PATH:-}" ]] && setx DOCKER_CERT_PATH "${DOCKER_CERT_PATH}" //M 2>/dev/null
+        
+            echo "✅ Saved to Windows system environment"
+            echo "To use: Open new terminal session"
+            ;;
+        
+          *)
+            echo "❌ Unsupported OS: $RUNNER_OS"
+            exit 1
+            ;;
+        esac
+
+    # ===================================================================
+    # STEP 6: Establish SSH Tunnels
+    # ===================================================================
+    - name: Establish SSH tunnels for Docker and SMB
+      uses: lexbritvin/ssh-action@v1
+      with:
+        host: ${{ steps.connection.outputs.ssh_host }}
+        port: ${{ steps.connection.outputs.ssh_port }}
+        username: ${{ steps.connection.outputs.ssh_user }}
+        private-key: ${{ inputs.private-key }}
+        private-key-path: ${{ inputs.private-key-path }}
+        jump-hosts: ${{ steps.connection.outputs.ssh_jump_string }}
+        local-forwards: ${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}
+        remote-forwards: ${{ steps.smb_share.outputs.smb_remote_fwd }}
+        known-hosts: |
+          ${{ steps.connection.outputs.extracted_known_hosts }}
+
+    # ===================================================================
+    # STEP 7: Configure Remote SMB Mount (if enabled)
+    # ===================================================================
+    - name: Configure SMB mount on remote host
+      uses: lexbritvin/ssh-action@v1
+      if: inputs.use-remote-share == 'true'
+      with:
+        host: ${{ steps.connection.outputs.ssh_host }}
+        port: ${{ steps.connection.outputs.ssh_port }}
+        username: ${{ steps.connection.outputs.ssh_user }}
+        private-key: ${{ inputs.private-key }}
+        private-key-path: ${{ inputs.private-key-path }}
+        jump-hosts: ${{ steps.connection.outputs.ssh_jump_string }}
+        known-hosts: |
+          ${{ steps.connection.outputs.extracted_known_hosts }}
+        command: |
+          set -e
+          
+          echo "Setting up SMB mount on remote Linux host"
+          
+          MOUNT_PATH='${{ steps.smb_share.outputs.mount_path }}'
+          SHARE_NAME='${{ steps.smb_share.outputs.share_name }}'
+          SHARE_USER='${{ steps.smb_share.outputs.share_user }}'
+          SHARE_PASS='${{ steps.smb_share.outputs.share_pass }}'
+          SMB_PORT='${{ steps.smb_share.outputs.smb_port }}'
+          
+          echo "Creating mount point: $MOUNT_PATH"
+          sudo mkdir -p "$MOUNT_PATH"
+
+          echo "Creating CIFS credentials file"
+          sudo tee /etc/cifs-credentials > /dev/null << EOF
+          username=$SHARE_USER
+          password=$SHARE_PASS
+          domain=WORKGROUP
+          EOF
+          sudo chmod 600 /etc/cifs-credentials
+
+          echo "Mounting SMB share via SSH tunnel"
+          if sudo mount -t cifs "//localhost/$SHARE_NAME" "$MOUNT_PATH" \
+            -o credentials=/etc/cifs-credentials,port=$SMB_PORT,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl; then
+            echo "SMB mount successful"
+          else
+            echo "SMB mount failed"
+            exit 1
+          fi
+
+          echo "Verifying mount:"
+          df -h | grep "$MOUNT_PATH" || echo "Mount not visible in df output"
+
+          echo "Testing file operations"
+          test_file="$MOUNT_PATH/mount_test_$(date +%s).txt"
+          if echo "SMB mount test from remote Linux host" | sudo tee "$test_file" > /dev/null; then
+            echo "Write test successful"
+            if sudo cat "$test_file" > /dev/null; then
+              echo "Read test successful"
+              sudo rm "$test_file"
+              echo "Delete test successful"
+            else
+              echo "Read test failed"
+              exit 1
+            fi
+          else
+            echo "Write test failed"
+            exit 1
+          fi
+
+          echo "SMB share configuration completed successfully"
+
+        # Cleanup SMB mount after use
+        post-command: |
+          echo "Cleaning up SMB mount"
+          if sudo umount '${{ steps.smb_share.outputs.mount_path }}' 2>/dev/null; then
+            echo "SMB mount unmounted successfully"
+          else
+            echo "Failed to unmount SMB share (may already be unmounted)"
+          fi
+
+    # ===================================================================
+    # STEP 8: Verify Docker Connection
+    # ===================================================================
+    - name: Verify Docker connection
+      shell: bash
+      run: |
+        echo "::group::🔍 Verifying Docker connection"
+        
+        # Display current Docker environment (without sensitive data)
+        echo "📋 Docker Environment Configuration:"
+        echo "  • DOCKER_HOST: ${DOCKER_HOST:-❌ not set}"
+        echo "  • DOCKER_TLS_VERIFY: ${DOCKER_TLS_VERIFY:-❌ not set}"
+        echo "  • DOCKER_CERT_PATH: ${DOCKER_CERT_PATH:-❌ not set}"
+        
+        # Test Docker daemon connectivity
+        echo "🔌 Testing Docker daemon connectivity..."
+        
+        # First, test basic connectivity
+        if docker version > /dev/null 2>&1; then
+          echo "✅ Docker connection established successfully"
+        
+          # Get detailed version information
+          echo "📋 Docker Version Information:"
+          docker version --format 'Client: {{.Client.Version}}, Server: {{.Server.Version}}' 2>/dev/null || {
+            echo "Client: $(docker version --format '{{.Client.Version}}' 2>/dev/null || echo 'Unknown')"
+            echo "Server: $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'Unknown')"
+          }
+        
+          # Test basic Docker functionality
+          echo "🧪 Testing basic Docker functionality..."
+          if docker info > /dev/null 2>&1; then
+            echo "✅ Docker info command successful"
+        
+            # Show basic system info
+            echo "📊 Docker System Info:"
+            docker info --format 'Containers: {{.Containers}}, Images: {{.Images}}, Server Version: {{.ServerVersion}}' 2>/dev/null || {
+              echo "Unable to retrieve detailed system info"
+            }
+          else
+            echo "⚠️ Docker info command failed, but connection is established"
+          fi
+        
+        else
+          echo "❌ Failed to connect to Docker daemon"
+          echo "Connection timeout after 30 seconds"
+          echo "Please verify:"
+          echo "  • Docker sidecar is running and accessible"
+          echo "  • SSH tunnel is properly established"
+          echo "  • Docker daemon is listening on the expected port"
+          echo "  • TLS certificates are valid (if TLS is enabled)"
+        
+          # Additional debugging information
+          echo "🔧 Debug Information:"
+          echo "  • DOCKER_HOST resolves to: ${DOCKER_HOST:-N/A}"
+          if [[ "${DOCKER_TLS_VERIFY}" == "1" ]]; then
+            echo "  • TLS verification enabled - checking certificates:"
+            if [[ -n "${DOCKER_CERT_PATH}" && -d "${DOCKER_CERT_PATH}" ]]; then
+              ls -la "${DOCKER_CERT_PATH}/" 2>/dev/null || echo "    Cannot list certificate directory"
+            else
+              echo "    Certificate path not set or invalid"
+            fi
+          fi
+        
+          exit 1
+        fi
+        
+        echo "::endgroup::"
+        echo "🎉 Remote Docker setup completed successfully!"
+
+    # ===================================================================
+    # STEP 9: Cleanup Temporary Files
+    # ===================================================================
+    - name: Cleanup temporary files
+      shell: bash
+      env:
+        INPUT_DOCKER_ARTIFACT: ${{ inputs.docker-connection-artifact-name }}
+      run: |
+        echo "🧹 Cleaning up temporary files"
+        
+        # Remove downloaded artifacts (preserve docker-certs for ongoing use)
+        if [[ -d "$INPUT_DOCKER_ARTIFACT" ]]; then
+          rm -rf "$INPUT_DOCKER_ARTIFACT"
+          echo "✅ Removed artifact directory: $INPUT_DOCKER_ARTIFACT"
+        fi
+        
+        # Clean up CIFS credentials on the runner (if they exist locally)
+        if [[ -f "/etc/cifs-credentials" ]]; then
+          sudo rm -f "/etc/cifs-credentials" 2>/dev/null || echo "⚠️ Could not remove CIFS credentials file"
+        fi
+        
+        echo "✅ Temporary files cleanup completed"
