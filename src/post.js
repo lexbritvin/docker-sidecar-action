@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
 
-async function post() {
+export async function cleanup() {
   // Get sidecar ID from state
   const sidecarId = core.getState("sidecar-id");
 
@@ -27,11 +27,4 @@ async function post() {
   await exec.exec("gh", uploadParams);
 
   core.info(`Shutdown signal sent to sidecar ${sidecarId}`);
-}
-
-try {
-  await post();
-} catch (error) {
-  core.warning(`Cleanup failed with error: ${error.message}`);
-  // We don't want to fail the workflow if cleanup fails
 }
