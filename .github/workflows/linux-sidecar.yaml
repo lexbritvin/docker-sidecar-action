@@ -79,6 +79,10 @@ jobs:
       - name: Start Docker daemon with TLS
         id: start-docker
         run: |
+          # Stop the existing Docker daemon
+          echo "Stopping existing Docker daemon..."
+          sudo systemctl stop docker
+    
           # Start Docker daemon with TLS
           echo "Starting Docker daemon with TLS..."
           sudo dockerd \
