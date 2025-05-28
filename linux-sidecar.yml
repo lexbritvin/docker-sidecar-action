@@ -2,7 +2,7 @@
 name: Linux Docker Sidecar
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       sidecar_id:
         required: true
