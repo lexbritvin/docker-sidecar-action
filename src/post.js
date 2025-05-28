@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as path from "path";
 import * as fs from "fs";
-import * as artifact from "@actions/artifact";
+import { DefaultArtifactClient } from "@actions/artifact";
 
 // For the cleanup part that was failing:
 export async function cleanup() {
@@ -19,18 +19,18 @@ export async function cleanup() {
   fs.writeFileSync(shutdownFilePath, `Shutdown requested at ${new Date().toISOString()}`);
 
   // Upload the shutdown signal using @actions/artifact
-  const artifactClient = artifact.create();
+  const artifact = new DefaultArtifactClient();
   const artifactName = `sidecar-${sidecarId}-shutdown`;
   const files = [shutdownFilePath];
   const rootDirectory = process.cwd();
 
   core.info(`Uploading shutdown signal as artifact: ${artifactName}`);
 
-  await artifactClient.uploadArtifact(
+  await artifact.uploadArtifact(
     artifactName,
     files,
     rootDirectory,
-    { continueOnError: false }
+    { retentionDays: 1 }
   );
 
   core.info("Shutdown signal uploaded successfully");

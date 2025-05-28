@@ -3,7 +3,7 @@ import * as exec from "@actions/exec";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
-import * as artifact from "@actions/artifact";
+import { DefaultArtifactClient } from "@actions/artifact";
 
 export async function setup() {
   // Generate a unique ID for this sidecar instance
@@ -48,25 +48,31 @@ export async function setup() {
   let sidecarStarted = false;
 
   // Download the artifact
-  const artifactClient = artifact.create();
+  const artifact = new DefaultArtifactClient();
   while (attempt < maxAttempts) {
     attempt++;
 
     try {
-      const sidecarDetails = await artifactClient.downloadArtifact(
-        `sidecar-${sidecarId}-details`,
-        ".",
-        { createArtifactFolder: false },
+      // First list artifacts to find the one with the correct name
+      const artifacts = await artifact.listArtifacts();
+      const sidecarArtifact = artifacts.artifacts.find(
+        (a) => a.name === `sidecar-${sidecarId}-details`
       );
 
-      // Check if download was successful
-      if (sidecarDetails.artifactName) {
-        core.info("Sidecar started successfully");
-        sidecarStarted = true;
-      } else {
-        // Download failed, will retry in the next iteration
-      }
+      if (sidecarArtifact) {
+        // Now download using the artifact ID
+        const sidecarDetails = await artifact.downloadArtifact(
+          sidecarArtifact.id,
+          { path: "." }
+        );
 
+        // Check if download was successful
+        if (sidecarDetails.artifactName) {
+          core.info("Sidecar started successfully");
+          sidecarStarted = true;
+          break; // Exit the loop once successful
+        }
+      }
     } catch (error) {
       // Ignore error and retry
     }
@@ -88,15 +94,26 @@ export async function setup() {
 
   // Download Docker certificates
   const dockerCertsName = `docker-certs-${sidecarId}`;
-  const certDownloadResult = await artifactClient.downloadArtifact(
-    dockerCertsName,
-    ".",
-    { createArtifactFolder: false },
+
+  // Find the artifact ID first
+  const certArtifacts = await artifact.listArtifacts();
+  const certArtifact = certArtifacts.artifacts.find(
+    (a) => a.name === dockerCertsName
   );
 
-  // Verify the download was successful
+  if (!certArtifact) {
+    throw new Error("Failed to find Docker certificates artifact");
+  }
+
+  // Download using the ID
+  const certDownloadResult = await artifact.downloadArtifact(
+    certArtifact.id,
+    { path: "." }
+  );
+
+  // Check if download was successful
   if (!certDownloadResult.artifactName) {
-    throw new Error("Failed to download Docker certificates");
+    throw new Error("Failed to download Docker certificates artifact");
   }
 
   // Set certificate path
