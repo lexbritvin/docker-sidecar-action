@@ -3,7 +3,7 @@ description: 'Set up a Linux Docker sidecar for Windows and macOS runners'
 author: 'Aleksandr Britvin'
 
 inputs:
-  workflow-filename:
+  workflow:
     description: 'Name of the workflow file to use for sidecar'
     required: true
   timeout:
