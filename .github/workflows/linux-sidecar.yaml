@@ -159,7 +159,7 @@ jobs:
       - name: Upload sidecar connection details
         uses: actions/upload-artifact@v4
         with:
-          name: sidecar-${{ inputs.sidecar-id }}-details
+          name: sidecar-details-${{ inputs.sidecar-id }}
           path: sidecar-details.env
           retention-days: 1
 
@@ -185,7 +185,7 @@ jobs:
             fi
             
             # Check for shutdown signal
-            if gh run download --name "sidecar-${{ inputs.sidecar-id }}-shutdown" --repo ${{ github.repository }} 2>/dev/null; then
+            if gh run download --name "stop-sidecar-${{ inputs.sidecar-id }}" --repo ${{ github.repository }}; then
               echo "Shutdown signal received, terminating sidecar"
               break
             fi

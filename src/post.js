@@ -20,7 +20,7 @@ export async function cleanup() {
 
   // Upload the shutdown signal using @actions/artifact
   const artifact = new DefaultArtifactClient();
-  const artifactName = `sidecar-${sidecarId}-shutdown`;
+  const artifactName = `stop-sidecar-${sidecarId}`;
   const files = [shutdownFilePath];
   const rootDirectory = process.cwd();
 

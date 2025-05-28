@@ -53,7 +53,7 @@ export async function setup() {
       // Try to download the connection details artifact
       const downloadParams = [
         "run", "download",
-        "--name", `sidecar-${sidecarId}-details`,
+        "--name", `sidecar-details-${sidecarId}`,
         "--repo", process.env.GITHUB_REPOSITORY,
       ];
 
@@ -89,6 +89,7 @@ export async function setup() {
     "run", "download",
     "--name", `${dockerCertsName}-${sidecarId}`,
     "--repo", process.env.GITHUB_REPOSITORY,
+    "-D", dockerCertsName,
   ]);
 
   // Set certificate path
