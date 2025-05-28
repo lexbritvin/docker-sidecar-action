@@ -85,16 +85,22 @@ export async function setup() {
 
   // Download Docker certificates
   const dockerCertsName = `docker-certs-${sidecarId}`;
-  const certParams = [
+  await exec.exec("gh", [
     "run", "download",
     "--name", dockerCertsName,
     "--repo", process.env.GITHUB_REPOSITORY,
-  ];
-
-  await exec.exec("gh", certParams);
+  ]);
 
   // Set certificate path
   const certPath = path.join(process.cwd(), dockerCertsName);
+
+  // List directory contents
+  const files = fs.readdirSync(certPath);
+  core.info("Docker certificates directory contents:");
+  files.forEach(file => {
+    core.info(` - ${file}`);
+  });
+
   core.setOutput("docker-cert-path", certPath);
   core.exportVariable("DOCKER_CERT_PATH", certPath);
 
@@ -102,6 +108,12 @@ export async function setup() {
   if (core.getInput("tlsVerify") === "true") {
     core.exportVariable("DOCKER_TLS_VERIFY", "1");
   }
+
+  // Log Docker environment variables
+  core.info("Docker environment variables:");
+  core.info(`DOCKER_HOST=${process.env.DOCKER_HOST}`);
+  core.info(`DOCKER_CERT_PATH=${process.env.DOCKER_CERT_PATH}`);
+  core.info(`DOCKER_TLS_VERIFY=${process.env.DOCKER_TLS_VERIFY || ""}`);
 
   // Test Docker connection
   core.info("Testing Docker connection...");
