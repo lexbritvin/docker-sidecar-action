@@ -3,7 +3,6 @@ import * as exec from "@actions/exec";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
-import { DefaultArtifactClient } from "@actions/artifact";
 
 export async function setup() {
   // Generate a unique ID for this sidecar instance
@@ -47,31 +46,23 @@ export async function setup() {
   let attempt = 0;
   let sidecarStarted = false;
 
-  // Download the artifact
-  const artifact = new DefaultArtifactClient();
   while (attempt < maxAttempts) {
     attempt++;
 
     try {
-      // First list artifacts to find the one with the correct name
-      const artifacts = await artifact.listArtifacts();
-      const sidecarArtifact = artifacts.artifacts.find(
-        (a) => a.name === `sidecar-${sidecarId}-details`
-      );
+      // Try to download the connection details artifact
+      const downloadParams = [
+        "run", "download",
+        "--name", `sidecar-${sidecarId}-details`,
+        "--repo", process.env.GITHUB_REPOSITORY,
+      ];
 
-      if (sidecarArtifact) {
-        // Now download using the artifact ID
-        const sidecarDetails = await artifact.downloadArtifact(
-          sidecarArtifact.id,
-          { path: "." }
-        );
+      const exitCode = await exec.exec("gh", downloadParams, { ignoreReturnCode: true });
 
-        // Check if download was successful
-        if (sidecarDetails.artifactName) {
-          core.info("Sidecar started successfully");
-          sidecarStarted = true;
-          break; // Exit the loop once successful
-        }
+      if (exitCode === 0) {
+        core.info("Sidecar started successfully");
+        sidecarStarted = true;
+        break;
       }
     } catch (error) {
       // Ignore error and retry
@@ -94,27 +85,13 @@ export async function setup() {
 
   // Download Docker certificates
   const dockerCertsName = `docker-certs-${sidecarId}`;
+  const certParams = [
+    "run", "download",
+    "--name", dockerCertsName,
+    "--repo", process.env.GITHUB_REPOSITORY,
+  ];
 
-  // Find the artifact ID first
-  const certArtifacts = await artifact.listArtifacts();
-  const certArtifact = certArtifacts.artifacts.find(
-    (a) => a.name === dockerCertsName
-  );
-
-  if (!certArtifact) {
-    throw new Error("Failed to find Docker certificates artifact");
-  }
-
-  // Download using the ID
-  const certDownloadResult = await artifact.downloadArtifact(
-    certArtifact.id,
-    { path: "." }
-  );
-
-  // Check if download was successful
-  if (!certDownloadResult.artifactName) {
-    throw new Error("Failed to download Docker certificates artifact");
-  }
+  await exec.exec("gh", certParams);
 
   // Set certificate path
   const certPath = path.join(process.cwd(), dockerCertsName);
