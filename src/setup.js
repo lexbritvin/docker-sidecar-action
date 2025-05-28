@@ -15,6 +15,9 @@ export async function setup() {
   // Get timeout from inputs
   const timeout = core.getInput("timeout");
 
+  // Get linux sidecar workflow filename.
+  const workflowFilename = core.getInput("workflow-filename");
+
   core.info(`Starting Linux Docker sidecar with ID: ${sidecarId}`);
 
   // Check for GitHub CLI
@@ -27,7 +30,7 @@ export async function setup() {
 
   // Start the Linux sidecar workflow
   const workflowParams = [
-    "workflow", "run", "linux-sidecar.yml",
+    "workflow", "run", workflowFilename,
     "-f", `sidecar_id=${sidecarId}`,
     "-f", `timeout=${timeout}`,
     "--ref", process.env.GITHUB_REF,
@@ -83,7 +86,7 @@ export async function setup() {
   // Download Docker certificates
   const certParams = [
     "run", "download",
-    "--name", "docker-certs",
+    "--name", `docker-certs-${sidecarId}`,
     "--repo", process.env.GITHUB_REPOSITORY,
   ];
 
