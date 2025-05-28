@@ -1,35 +1,6 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 6136:
-/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
-
-"use strict";
-__nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
-__nccwpck_require__.r(__webpack_exports__);
-/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
-/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _src__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(3939);
-
-
-
-
-try {
-  if (!_src__WEBPACK_IMPORTED_MODULE_1__/* .IsPost */ .dZ) {
-    await (0,_src__WEBPACK_IMPORTED_MODULE_1__/* .setup */ .mj)()
-  }
-  else {
-    await (0,_src__WEBPACK_IMPORTED_MODULE_1__/* .cleanup */ .tP)()
-  }
-} catch (error) {
-  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(`Action failed with error: ${error.message}`);
-}
-
-__webpack_async_result__();
-} catch(e) { __webpack_async_result__(e); } }, 1);
-
-/***/ }),
-
 /***/ 4914:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -25672,42 +25643,70 @@ module.exports = {
 
 /***/ }),
 
-/***/ 3939:
+/***/ 5105:
+/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
+
+"use strict";
+__nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
+__nccwpck_require__.r(__webpack_exports__);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _post_js__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6043);
+/* harmony import */ var _setup_js__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(3292);
+
+
+
+
+
+const IsPost = !!_actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('isPost');
+
+try {
+  if (!IsPost) {
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('isPost', 'true')
+    await (0,_setup_js__WEBPACK_IMPORTED_MODULE_2__/* .setup */ .m)()
+  }
+  else {
+    await (0,_post_js__WEBPACK_IMPORTED_MODULE_1__/* .cleanup */ .t)()
+  }
+} catch (error) {
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(`Action failed with error: ${error.message}`);
+}
+
+__webpack_async_result__();
+} catch(e) { __webpack_async_result__(e); } }, 1);
+
+/***/ }),
+
+/***/ 6043:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 "use strict";
-
-// EXPORTS
-__nccwpck_require__.d(__webpack_exports__, {
-  dZ: () => (/* binding */ IsPost),
-  tP: () => (/* reexport */ cleanup),
-  mj: () => (/* reexport */ setup)
-});
-
-// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7484);
-// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __nccwpck_require__(5236);
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __nccwpck_require__(9896);
-;// CONCATENATED MODULE: ./src/post.js
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   t: () => (/* binding */ cleanup)
+/* harmony export */ });
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _actions_exec__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(5236);
+/* harmony import */ var _actions_exec__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(_actions_exec__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_2__);
 
 
 
 
 async function cleanup() {
   // Get sidecar ID from state
-  const sidecarId = core.getState("sidecar-id");
+  const sidecarId = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState("sidecar-id");
 
   if (!sidecarId) {
-    core.warning("No sidecar ID found in state, nothing to clean up");
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.warning("No sidecar ID found in state, nothing to clean up");
     return;
   }
 
-  core.info(`Shutting down sidecar with ID: ${sidecarId}`);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Shutting down sidecar with ID: ${sidecarId}`);
 
   // Create shutdown signal file
-  external_fs_.writeFileSync("shutdown-signal.txt", "shutdown=true");
+  fs__WEBPACK_IMPORTED_MODULE_2__.writeFileSync("shutdown-signal.txt", "shutdown=true");
 
   // Upload shutdown signal artifact
   const uploadParams = [
@@ -25717,16 +25716,31 @@ async function cleanup() {
     "shutdown-signal.txt",
   ];
 
-  await exec.exec("gh", uploadParams);
+  await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("gh", uploadParams);
 
-  core.info(`Shutdown signal sent to sidecar ${sidecarId}`);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Shutdown signal sent to sidecar ${sidecarId}`);
 }
 
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(6928);
-// EXTERNAL MODULE: external "crypto"
-var external_crypto_ = __nccwpck_require__(6982);
-;// CONCATENATED MODULE: ./src/setup.js
+
+/***/ }),
+
+/***/ 3292:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+"use strict";
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   m: () => (/* binding */ setup)
+/* harmony export */ });
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7484);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _actions_exec__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(5236);
+/* harmony import */ var _actions_exec__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(_actions_exec__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(6928);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__nccwpck_require__.n(path__WEBPACK_IMPORTED_MODULE_2__);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_3__);
+/* harmony import */ var crypto__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(6982);
+/* harmony import */ var crypto__WEBPACK_IMPORTED_MODULE_4___default = /*#__PURE__*/__nccwpck_require__.n(crypto__WEBPACK_IMPORTED_MODULE_4__);
 
 
 
@@ -25735,25 +25749,25 @@ var external_crypto_ = __nccwpck_require__(6982);
 
 async function setup() {
   // Generate a unique ID for this sidecar instance
-  const sidecarId = external_crypto_.randomUUID();
-  core.setOutput("sidecar-id", sidecarId);
+  const sidecarId = crypto__WEBPACK_IMPORTED_MODULE_4__.randomUUID();
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput("sidecar-id", sidecarId);
 
   // Save sidecar ID for post cleanup
-  core.saveState("sidecar-id", sidecarId);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState("sidecar-id", sidecarId);
 
   // Get timeout from inputs
-  const timeout = core.getInput("timeout");
+  const timeout = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput("timeout");
 
   // Get linux sidecar workflow filename.
-  const workflow = core.getInput("workflow");
+  const workflow = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput("workflow");
 
-  core.info(`Starting Linux Docker sidecar with ID: ${sidecarId}`);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Starting Linux Docker sidecar with ID: ${sidecarId}`);
 
   // Check for GitHub CLI
   try {
-    await exec.exec("gh", ["--version"]);
+    await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("gh", ["--version"]);
   } catch (error) {
-    core.error("GitHub CLI not found. Please install it using actions/setup-gh");
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.error("GitHub CLI not found. Please install it using actions/setup-gh");
     throw new Error("GitHub CLI is required for this action");
   }
 
@@ -25766,10 +25780,10 @@ async function setup() {
     "--repo", process.env.GITHUB_REPOSITORY,
   ];
 
-  await exec.exec("gh", workflowParams);
+  await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("gh", workflowParams);
 
   // Wait for sidecar to start and provide connection details
-  core.info("Waiting for sidecar to start...");
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info("Waiting for sidecar to start...");
 
   const maxAttempts = 30;
   let attempt = 0;
@@ -25786,10 +25800,10 @@ async function setup() {
         "--repo", process.env.GITHUB_REPOSITORY,
       ];
 
-      const exitCode = await exec.exec("gh", downloadParams, { ignoreReturnCode: true });
+      const exitCode = await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("gh", downloadParams, { ignoreReturnCode: true });
 
       if (exitCode === 0) {
-        core.info("Sidecar started successfully");
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info("Sidecar started successfully");
         sidecarStarted = true;
         break;
       }
@@ -25797,7 +25811,7 @@ async function setup() {
       // Ignore error and retry
     }
 
-    core.info(`Waiting for sidecar to start (attempt ${attempt}/${maxAttempts})...`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Waiting for sidecar to start (attempt ${attempt}/${maxAttempts})...`);
     await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
   }
 
@@ -25806,43 +25820,38 @@ async function setup() {
   }
 
   // Read connection details
-  const details = external_fs_.readFileSync("sidecar-details.env", "utf8");
+  const details = fs__WEBPACK_IMPORTED_MODULE_3__.readFileSync("sidecar-details.env", "utf8");
   const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
 
-  core.setOutput("docker-host", dockerHost);
-  core.exportVariable("DOCKER_HOST", dockerHost);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput("docker-host", dockerHost);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable("DOCKER_HOST", dockerHost);
 
   // Download Docker certificates
+  const dockerCertsName = `docker-certs-${sidecarId}`;
   const certParams = [
     "run", "download",
-    "--name", `docker-certs-${sidecarId}`,
+    "--name", dockerCertsName,
     "--repo", process.env.GITHUB_REPOSITORY,
   ];
 
-  await exec.exec("gh", certParams);
+  await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("gh", certParams);
 
   // Set certificate path
-  const certPath = external_path_.join(process.cwd(), "docker-certs");
-  core.setOutput("docker-cert-path", certPath);
-  core.exportVariable("DOCKER_CERT_PATH", certPath);
+  const certPath = path__WEBPACK_IMPORTED_MODULE_2__.join(process.cwd(), dockerCertsName);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput("docker-cert-path", certPath);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable("DOCKER_CERT_PATH", certPath);
 
   // Set TLS verification
-  if (core.getInput("tlsVerify") === "true") {
-    core.exportVariable("DOCKER_TLS_VERIFY", "1");
+  if (_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput("tlsVerify") === "true") {
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable("DOCKER_TLS_VERIFY", "1");
   }
 
   // Test Docker connection
-  core.info("Testing Docker connection...");
-  await exec.exec("docker", ["info"]);
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info("Testing Docker connection...");
+  await _actions_exec__WEBPACK_IMPORTED_MODULE_1__.exec("docker", ["info"]);
 
-  core.info("Docker sidecar setup complete");
+  _actions_core__WEBPACK_IMPORTED_MODULE_0__.info("Docker sidecar setup complete");
 }
-
-;// CONCATENATED MODULE: ./src/index.js
-
-
-const IsPost = !!core.getState('isPost');
-
 
 
 /***/ }),
@@ -27871,7 +27880,7 @@ module.exports = parseParams
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module used 'module' so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(6136);
+/******/ 	var __webpack_exports__ = __nccwpck_require__(5105);
 /******/ 	module.exports = __webpack_exports__;
 /******/ 	
 /******/ })()

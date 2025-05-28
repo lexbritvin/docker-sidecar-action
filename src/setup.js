@@ -84,16 +84,17 @@ export async function setup() {
   core.exportVariable("DOCKER_HOST", dockerHost);
 
   // Download Docker certificates
+  const dockerCertsName = `docker-certs-${sidecarId}`;
   const certParams = [
     "run", "download",
-    "--name", `docker-certs-${sidecarId}`,
+    "--name", dockerCertsName,
     "--repo", process.env.GITHUB_REPOSITORY,
   ];
 
   await exec.exec("gh", certParams);
 
   // Set certificate path
-  const certPath = path.join(process.cwd(), "docker-certs");
+  const certPath = path.join(process.cwd(), dockerCertsName);
   core.setOutput("docker-cert-path", certPath);
   core.exportVariable("DOCKER_CERT_PATH", certPath);
 
