@@ -12,13 +12,16 @@ on:
         type: string
         default: '3600'
         description: 'Maximum time in seconds to keep sidecar alive'
+    secrets:
+      GITHUB_TOKEN:
+        required: true
 
 jobs:
   run-sidecar:
     name: Run Linux Docker Sidecar
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Generate TLS certificates for Docker
         id: generate-certs
