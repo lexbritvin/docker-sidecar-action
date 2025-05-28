@@ -1,30 +1,43 @@
 import * as core from "@actions/core";
-import * as exec from "@actions/exec";
+import * as path from "path";
 import * as fs from "fs";
+import * as artifact from "@actions/artifact";
 
+// For the cleanup part that was failing:
 export async function cleanup() {
-  // Get sidecar ID from state
   const sidecarId = core.getState("sidecar-id");
 
   if (!sidecarId) {
-    core.warning("No sidecar ID found in state, nothing to clean up");
+    core.info("No sidecar ID found, nothing to clean up");
     return;
   }
 
   core.info(`Shutting down sidecar with ID: ${sidecarId}`);
 
-  // Create shutdown signal file
-  fs.writeFileSync("shutdown-signal.txt", "shutdown=true");
+  // Create a file to signal shutdown
+  const shutdownFilePath = path.join(process.cwd(), "shutdown-signal.txt");
+  fs.writeFileSync(shutdownFilePath, `Shutdown requested at ${new Date().toISOString()}`);
 
-  // Upload shutdown signal artifact
-  const uploadParams = [
-    "run", "upload",
-    "--name", `sidecar-${sidecarId}-shutdown`,
-    "--repo", process.env.GITHUB_REPOSITORY,
-    "shutdown-signal.txt",
-  ];
+  // Upload the shutdown signal using @actions/artifact
+  const artifactClient = artifact.create();
+  const artifactName = `sidecar-${sidecarId}-shutdown`;
+  const files = [shutdownFilePath];
+  const rootDirectory = process.cwd();
 
-  await exec.exec("gh", uploadParams);
+  core.info(`Uploading shutdown signal as artifact: ${artifactName}`);
 
-  core.info(`Shutdown signal sent to sidecar ${sidecarId}`);
+  await artifactClient.uploadArtifact(
+    artifactName,
+    files,
+    rootDirectory,
+    { continueOnError: false }
+  );
+
+  core.info("Shutdown signal uploaded successfully");
+
+  // Wait some time for the sidecar to process the shutdown signal
+  core.info("Waiting for sidecar to shut down...");
+  await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
+
+  core.info("Cleanup completed");
 }

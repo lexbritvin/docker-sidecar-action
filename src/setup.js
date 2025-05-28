@@ -3,6 +3,7 @@ import * as exec from "@actions/exec";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
+import * as artifact from "@actions/artifact";
 
 export async function setup() {
   // Generate a unique ID for this sidecar instance
@@ -46,24 +47,26 @@ export async function setup() {
   let attempt = 0;
   let sidecarStarted = false;
 
+  // Download the artifact
+  const artifactClient = artifact.create();
   while (attempt < maxAttempts) {
     attempt++;
 
     try {
-      // Try to download the connection details artifact
-      const downloadParams = [
-        "run", "download",
-        "--name", `sidecar-${sidecarId}-details`,
-        "--repo", process.env.GITHUB_REPOSITORY,
-      ];
+      const sidecarDetails = await artifactClient.downloadArtifact(
+        `sidecar-${sidecarId}-details`,
+        ".",
+        { createArtifactFolder: false },
+      );
 
-      const exitCode = await exec.exec("gh", downloadParams, { ignoreReturnCode: true });
-
-      if (exitCode === 0) {
+      // Check if download was successful
+      if (sidecarDetails.artifactName) {
         core.info("Sidecar started successfully");
         sidecarStarted = true;
-        break;
+      } else {
+        // Download failed, will retry in the next iteration
       }
+
     } catch (error) {
       // Ignore error and retry
     }
@@ -85,13 +88,16 @@ export async function setup() {
 
   // Download Docker certificates
   const dockerCertsName = `docker-certs-${sidecarId}`;
-  const certParams = [
-    "run", "download",
-    "--name", dockerCertsName,
-    "--repo", process.env.GITHUB_REPOSITORY,
-  ];
+  const certDownloadResult = await artifactClient.downloadArtifact(
+    dockerCertsName,
+    ".",
+    { createArtifactFolder: false },
+  );
 
-  await exec.exec("gh", certParams);
+  // Verify the download was successful
+  if (!certDownloadResult.artifactName) {
+    throw new Error("Failed to download Docker certificates");
+  }
 
   // Set certificate path
   const certPath = path.join(process.cwd(), dockerCertsName);
