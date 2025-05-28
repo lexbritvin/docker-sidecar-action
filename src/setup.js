@@ -31,7 +31,7 @@ export async function setup() {
   // Start the Linux sidecar workflow
   const workflowParams = [
     "workflow", "run", workflow,
-    "-f", `sidecar_id=${sidecarId}`,
+    "-f", `sidecar-id=${sidecarId}`,
     "-f", `timeout=${timeout}`,
     "--ref", process.env.GITHUB_REF,
     "--repo", process.env.GITHUB_REPOSITORY,
