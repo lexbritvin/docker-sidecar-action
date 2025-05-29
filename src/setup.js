@@ -31,7 +31,7 @@ export async function setup() {
       // Try to download the connection details artifact
       const downloadParams = [
         "run", "download",
-        runId,
+        `${runId}`,
         "--name", `sidecar-details`,
         "--repo", process.env.GITHUB_REPOSITORY,
       ];
@@ -66,7 +66,7 @@ export async function setup() {
   const dockerCertsName = "docker-certs";
   await exec.exec("gh", [
     "run", "download",
-    runId,
+    `${runId}`,
     "--name", dockerCertsName,
     "--repo", process.env.GITHUB_REPOSITORY,
     "--dir", dockerCertsName,
