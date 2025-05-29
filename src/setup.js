@@ -69,7 +69,7 @@ export async function setup() {
   const encryptedFile = path.join(".", `client-certs.enc`);
   const decryptedFile = "client-certs.tar";
 
-  const pass = "test_pass";
+  const pass = "test pass";
 
   try {
     // Decrypt the file using OpenSSL with GitHub token as key
@@ -87,7 +87,7 @@ export async function setup() {
     fs.mkdirSync(dockerCertsName);
     await exec.exec("tar", [
       "-C", dockerCertsName,
-      "xf", decryptedFile
+      "-xf", decryptedFile
     ]);
 
     // Clean up intermediate files

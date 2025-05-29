@@ -77,7 +77,7 @@ jobs:
           mkdir -p client-certs
           cp -r docker-certs/client/* client-certs/
           tar -C client-certs -cf client-certs.tar .
-          openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "test_pass" -pbkdf2
+          openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "test pass" -pbkdf2
           rm -rf client-certs/ client-certs.tar
 
       - name: Start Docker daemon with TLS
