@@ -2,20 +2,10 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as path from "path";
 import * as fs from "fs";
-import * as github from "@actions/github";
+import { DefaultArtifactClient } from "@actions/artifact";
 
 export async function setup() {
-  const runId = github.context.runId;
-
   core.info(`Starting Linux Docker sidecar`);
-
-  // Check for GitHub CLI
-  try {
-    await exec.exec("gh", ["--version"]);
-  } catch (error) {
-    core.error("GitHub CLI not found. Please install it using actions/setup-gh");
-    throw new Error("GitHub CLI is required for this action");
-  }
 
   // Wait for sidecar to start and provide connection details
   core.info("Waiting for sidecar to start...");
@@ -24,24 +14,23 @@ export async function setup() {
   let attempt = 0;
   let sidecarStarted = false;
 
+  const artifact = new DefaultArtifactClient();
+
   while (attempt < maxAttempts) {
     attempt++;
 
     try {
-      // Try to download the connection details artifact
-      const downloadParams = [
-        "run", "download",
-        `${runId}`,
-        "--name", `sidecar-details`,
-        "--repo", process.env.GITHUB_REPOSITORY,
-      ];
-
-      const exitCode = await exec.exec("gh", downloadParams, { ignoreReturnCode: true });
-
-      if (exitCode === 0) {
-        core.info("Sidecar started successfully");
-        sidecarStarted = true;
-        break;
+      const detailsInfo = await artifact.getArtifact(`sidecar-details`);
+      if (detailsInfo.artifact.id) {
+        const details = await artifact.downloadArtifact(
+          detailsInfo.artifact.id,
+          { path: "." },
+        );
+        if (details.downloadPath) {
+          core.info("Sidecar started successfully");
+          sidecarStarted = true;
+          break;
+        }
       }
     } catch (error) {
       // Ignore error and retry
@@ -64,15 +53,20 @@ export async function setup() {
 
   // Download Docker certificates
   const dockerCertsName = "docker-certs";
-  await exec.exec("gh", [
-    "run", "download",
-    `${runId}`,
-    "--name", dockerCertsName,
-    "--repo", process.env.GITHUB_REPOSITORY,
-    "--dir", dockerCertsName,
-  ]);
+  const certsInfo = await artifact.getArtifact(dockerCertsName);
+  if (!certsInfo.artifact.id) {
+    throw new Error("Failed to find Docker certificates in artifacts");
+  }
 
-  // Set certificate path
+  const certs = await artifact.downloadArtifact(
+    certsInfo.artifact.id,
+    { path: dockerCertsName },
+  );
+  if (!certs.downloadPath) {
+    throw new Error("Failed to download Docker certificates");
+  }
+
+  // Set certificates path
   const certPath = path.join(process.cwd(), dockerCertsName);
 
   core.setOutput("docker-cert-path", certPath);
