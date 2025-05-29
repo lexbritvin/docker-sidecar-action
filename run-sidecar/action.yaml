@@ -177,11 +177,10 @@ runs:
     - name: Keep sidecar alive and monitor for shutdown signal
       id: keep-alive
       shell: bash
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         echo "Sidecar is running..."
         echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
+        GH_TOKEN="${{ github.token }}"
         
         # Start time
         START_TIME=$(date +%s)
