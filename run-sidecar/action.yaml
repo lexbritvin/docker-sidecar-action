@@ -29,6 +29,7 @@ runs:
 
     - name: Generate TLS certificates for Docker
       id: generate-certs
+      shell: bash
       run: |
         # Create directories for Docker certs
         mkdir -p docker-certs/client
@@ -92,6 +93,7 @@ runs:
 
     - name: Start Docker daemon with TLS
       id: start-docker
+      shell: bash
       run: |
         # Stop the existing Docker daemon
         echo "Stopping existing Docker daemon..."
@@ -133,6 +135,7 @@ runs:
 
     - name: Setup Serveo tunnel
       id: setup-serveo
+      shell: bash
       run: |
         # Start SSH port forwarding via serveo.net with random port (port 0) in background
         # and redirect output to a file so we can extract the connection details
@@ -173,6 +176,7 @@ runs:
 
     - name: Keep sidecar alive and monitor for shutdown signal
       id: keep-alive
+      shell: bash
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -208,6 +212,7 @@ runs:
         echo "Sidecar is shutting down"
 
     - name: Cleanup resources
+      shell: bash
       if: always()
       run: |
         echo "Cleaning up resources..."
