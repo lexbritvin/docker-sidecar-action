@@ -5,17 +5,15 @@ import * as fs from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
 
 export async function setup() {
-  core.info(`Starting Linux Docker sidecar`);
-
   // Wait for sidecar to start and provide connection details
   core.info("Waiting for sidecar to start...");
 
+  const artifact = new DefaultArtifactClient();
   const maxAttempts = 30;
   let attempt = 0;
   let sidecarStarted = false;
 
-  const artifact = new DefaultArtifactClient();
-
+  // Wait for a sidecar to upload connection details.
   while (attempt < maxAttempts) {
     attempt++;
 
@@ -60,10 +58,41 @@ export async function setup() {
 
   const certs = await artifact.downloadArtifact(
     certsInfo.artifact.id,
-    { path: dockerCertsName },
+    { path: "." },
   );
+
   if (!certs.downloadPath) {
     throw new Error("Failed to download Docker certificates");
+  }
+
+  // The certificates are encrypted, decrypt and untar.
+  const encryptedFile = path.join(".", `client-certs.enc`);
+  const decryptedFile = `${encryptedFile}.tar`;
+
+  try {
+    // Decrypt the file using OpenSSL with GitHub token as key
+    await exec.exec("openssl", [
+      "enc",
+      "-d",
+      "-aes-256-cbc",
+      "-in", encryptedFile,
+      "-out", decryptedFile,
+      "-k", `${process.env.GITHUB_TOKEN}`,
+      "-pbkdf2",
+    ]);
+
+    // Extract the decrypted tar file
+    fs.mkdirSync(dockerCertsName);
+    await exec.exec("tar", [
+      "-C", dockerCertsName,
+      "xf", decryptedFile
+    ]);
+
+    // Clean up intermediate files
+    fs.unlinkSync(decryptedFile);
+    fs.unlinkSync(encryptedFile);
+  } catch (error) {
+    throw new Error(`Failed to process Docker certificates: ${error.message}`);
   }
 
   // Set certificates path

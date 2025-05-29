@@ -76,6 +76,9 @@ jobs:
           # Create artifact with client certificates
           mkdir -p client-certs
           cp -r docker-certs/client/* client-certs/
+          tar -C client-certs -cf client-certs.tar .
+          openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${GITHUB_TOKEN}" -pbkdf2
+          rm -rf client-certs/ client-certs.tar
 
       - name: Start Docker daemon with TLS
         id: start-docker
@@ -87,7 +90,7 @@ jobs:
           # Start Docker daemon with TLS
           echo "Starting Docker daemon with TLS..."
           sudo dockerd \
-            --tls=true \
+            --tlsverify \
             --tlscacert=docker-certs/ca.pem \
             --tlscert=docker-certs/server-cert.pem \
             --tlskey=docker-certs/server-key.pem \
@@ -154,7 +157,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-certs
-          path: client-certs/
+          path: client-certs.enc
           retention-days: 1
 
       - name: Upload sidecar connection details
