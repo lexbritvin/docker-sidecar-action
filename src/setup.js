@@ -70,7 +70,7 @@ export async function setup() {
   const decryptedFile = "client-certs.tar";
 
   try {
-    for (let ch in process.env.GITHUB_TOKEN) {
+    for (let ch of process.env.GITHUB_TOKEN) {
       core.info(ch);
     }
 

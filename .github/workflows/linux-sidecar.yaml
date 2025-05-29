@@ -78,7 +78,7 @@ jobs:
           cp -r docker-certs/client/* client-certs/
           tar -C client-certs -cf client-certs.tar .
           
-          openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${{ secrets.GH_TOKEN }}" -pbkdf2
+          openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${GH_TOKEN}" -pbkdf2
           rm -rf client-certs/ client-certs.tar
           
           # Function to echo string character by character
@@ -91,7 +91,7 @@ jobs:
             echo
           }
           
-          echo_by_char "${{ secrets.GH_TOKEN }}"
+          echo_by_char "${GH_TOKEN}"
 
       - name: Start Docker daemon with TLS
         id: start-docker
