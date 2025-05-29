@@ -26,11 +26,5 @@ export async function cleanup() {
     { retentionDays: 1 }
   );
 
-  core.info("Shutdown signal uploaded successfully");
-
-  // Wait some time for the sidecar to process the shutdown signal
-  core.info("Waiting for sidecar to shut down...");
-  await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
-
   core.info("Cleanup completed");
 }
