@@ -18,6 +18,8 @@ inputs:
 
 runs:
   using: "composite"
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   steps:
     - name: Verify Linux environment
       shell: bash
