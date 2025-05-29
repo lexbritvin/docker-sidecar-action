@@ -5,14 +5,7 @@ import { DefaultArtifactClient } from "@actions/artifact";
 
 // For the cleanup part that was failing:
 export async function cleanup() {
-  const sidecarId = core.getState("sidecar-id");
-
-  if (!sidecarId) {
-    core.info("No sidecar ID found, nothing to clean up");
-    return;
-  }
-
-  core.info(`Shutting down sidecar with ID: ${sidecarId}`);
+  core.info(`Shutting down sidecar`);
 
   // Create a file to signal shutdown
   const shutdownFilePath = path.join(process.cwd(), "shutdown-signal.txt");
@@ -20,7 +13,7 @@ export async function cleanup() {
 
   // Upload the shutdown signal using @actions/artifact
   const artifact = new DefaultArtifactClient();
-  const artifactName = `stop-sidecar-${sidecarId}`;
+  const artifactName = `stop-sidecar`;
   const files = [shutdownFilePath];
   const rootDirectory = process.cwd();
 

@@ -2,23 +2,12 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as path from "path";
 import * as fs from "fs";
-import * as crypto from "crypto";
+import * as github from "@actions/github";
 
 export async function setup() {
-  // Generate a unique ID for this sidecar instance
-  const sidecarId = crypto.randomUUID();
-  core.setOutput("sidecar-id", sidecarId);
+  const runId = github.context.runId;
 
-  // Save sidecar ID for post cleanup
-  core.saveState("sidecar-id", sidecarId);
-
-  // Get timeout from inputs
-  const timeout = core.getInput("timeout");
-
-  // Get linux sidecar workflow filename.
-  const workflow = core.getInput("workflow");
-
-  core.info(`Starting Linux Docker sidecar with ID: ${sidecarId}`);
+  core.info(`Starting Linux Docker sidecar`);
 
   // Check for GitHub CLI
   try {
@@ -27,17 +16,6 @@ export async function setup() {
     core.error("GitHub CLI not found. Please install it using actions/setup-gh");
     throw new Error("GitHub CLI is required for this action");
   }
-
-  // Start the Linux sidecar workflow
-  const workflowParams = [
-    "workflow", "run", workflow,
-    "-f", `sidecar-id=${sidecarId}`,
-    "-f", `timeout=${timeout}`,
-    "--ref", process.env.GITHUB_REF,
-    "--repo", process.env.GITHUB_REPOSITORY,
-  ];
-
-  await exec.exec("gh", workflowParams);
 
   // Wait for sidecar to start and provide connection details
   core.info("Waiting for sidecar to start...");
@@ -53,7 +31,8 @@ export async function setup() {
       // Try to download the connection details artifact
       const downloadParams = [
         "run", "download",
-        "--name", `sidecar-details-${sidecarId}`,
+        runId,
+        "--name", `sidecar-details`,
         "--repo", process.env.GITHUB_REPOSITORY,
       ];
 
@@ -87,9 +66,10 @@ export async function setup() {
   const dockerCertsName = "docker-certs";
   await exec.exec("gh", [
     "run", "download",
-    "--name", `${dockerCertsName}-${sidecarId}`,
+    runId,
+    "--name", dockerCertsName,
     "--repo", process.env.GITHUB_REPOSITORY,
-    "-D", dockerCertsName,
+    "--dir", dockerCertsName,
   ]);
 
   // Set certificate path

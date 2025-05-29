@@ -3,10 +3,6 @@ name: Linux Docker Sidecar
 on:
   workflow_call:
     inputs:
-      sidecar-id:
-        required: true
-        type: string
-        description: 'Unique ID for this sidecar instance'
       timeout:
         required: false
         type: string
@@ -157,21 +153,21 @@ jobs:
       - name: Upload Docker client certificates
         uses: actions/upload-artifact@v4
         with:
-          name: docker-certs-${{ inputs.sidecar-id }}
+          name: docker-certs
           path: client-certs/
           retention-days: 1
 
       - name: Upload sidecar connection details
         uses: actions/upload-artifact@v4
         with:
-          name: sidecar-details-${{ inputs.sidecar-id }}
+          name: sidecar-details
           path: sidecar-details.env
           retention-days: 1
 
       - name: Keep sidecar alive and monitor for shutdown signal
         id: keep-alive
         run: |
-          echo "Sidecar ${{ inputs.sidecar-id }} is running..."
+          echo "Sidecar is running..."
           echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
           
           # Start time
@@ -190,7 +186,7 @@ jobs:
             fi
             
             # Check for shutdown signal
-            if gh run download --name "stop-sidecar-${{ inputs.sidecar-id }}" --repo ${{ github.repository }}; then
+            if gh run download ${{ github.run_id }} --name "stop-sidecar" --repo ${{ github.repository }} 2>/dev/null; then
               echo "Shutdown signal received, terminating sidecar"
               break
             fi
@@ -200,7 +196,7 @@ jobs:
             sleep 30
           done
           
-          echo "Sidecar ${{ inputs.sidecar-id }} is shutting down"
+          echo "Sidecar is shutting down"
 
       - name: Cleanup resources
         if: always()
