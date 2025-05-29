@@ -77,7 +77,7 @@ export async function setup() {
       "-aes-256-cbc",
       "-in", encryptedFile,
       "-out", decryptedFile,
-      "-k", `${process.env.GITHUB_TOKEN}`,
+      "-k", `${process.env.GH_TOKEN}`,
       "-pbkdf2",
     ]);
 
