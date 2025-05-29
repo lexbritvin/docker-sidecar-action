@@ -5,7 +5,7 @@ import * as fs from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
 
 export async function setup() {
-  // Wait for sidecar to start and provide connection details
+  // Wait for a sidecar to start and provide connection details
   core.info("Waiting for sidecar to start...");
 
   const artifact = new DefaultArtifactClient();
@@ -46,9 +46,6 @@ export async function setup() {
   const details = fs.readFileSync("sidecar-details.env", "utf8");
   const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
 
-  core.setOutput("docker-host", dockerHost);
-  core.exportVariable("DOCKER_HOST", dockerHost);
-
   // Download Docker certificates
   const dockerCertsName = "docker-certs";
   const certsInfo = await artifact.getArtifact(dockerCertsName);
@@ -70,18 +67,15 @@ export async function setup() {
   const decryptedFile = "client-certs.tar";
 
   try {
-    for (let ch of process.env.GITHUB_TOKEN) {
-      core.info(ch);
-    }
-
     // Decrypt the file using OpenSSL with GitHub token as key
+    const encryptKey = core.getInput("certificates-encryption-key");
     await exec.exec("openssl", [
       "enc",
       "-d",
       "-aes-256-cbc",
       "-in", encryptedFile,
       "-out", decryptedFile,
-      "-k", `${process.env.GITHUB_TOKEN}`,
+      "-k", encryptKey,
       "-pbkdf2",
     ]);
 
@@ -102,13 +96,10 @@ export async function setup() {
   // Set certificates path
   const certPath = path.join(process.cwd(), dockerCertsName);
 
-  core.setOutput("docker-cert-path", certPath);
+  // Set env variables for docker execution
+  core.exportVariable("DOCKER_HOST", dockerHost);
   core.exportVariable("DOCKER_CERT_PATH", certPath);
-
-  // Set TLS verification
-  if (core.getInput("tlsVerify") === "true") {
-    core.exportVariable("DOCKER_TLS_VERIFY", "1");
-  }
+  core.exportVariable("DOCKER_TLS_VERIFY", "1");
 
   // Log Docker environment variables
   core.info("Docker environment variables:");
@@ -116,9 +107,5 @@ export async function setup() {
   core.info(`DOCKER_CERT_PATH=${process.env.DOCKER_CERT_PATH}`);
   core.info(`DOCKER_TLS_VERIFY=${process.env.DOCKER_TLS_VERIFY || ""}`);
 
-  // Test Docker connection
-  core.info("Testing Docker connection...");
-  await exec.exec("docker", ["info"]);
-
-  core.info("Docker sidecar setup complete");
+  core.info("Remote Docker setup complete");
 }

@@ -3,16 +3,10 @@ description: 'Set up a Linux Docker sidecar for Windows and macOS runners'
 author: 'Aleksandr Britvin'
 
 inputs:
-  tlsVerify:
-    description: 'Whether to enable TLS verification'
+  certificates-encryption-key:
+    description: 'Key to encrypt certificates before uploading'
+    default: ''
     required: false
-    default: 'true'
-
-outputs:
-  docker-host:
-    description: 'Docker host connection string'
-  docker-cert-path:
-    description: 'Path to Docker TLS certificates'
 
 runs:
   using: 'node20'

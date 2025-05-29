@@ -1,0 +1,223 @@
+name: 'Docker Sidecar - Run Docker'
+description: 'Starts a Linux sidecar with exposed Docker Host'
+author: 'Aleksandr Britvin'
+
+inputs:
+  certificate-domains:
+    description: 'Comma separated allowed domains for the result certificates'
+    default: 'localhost,serveo.net,*.serveo.net'
+    required: false
+  certificates-encryption-key:
+    description: 'Key to encrypt certificates before uploading'
+    default: ''
+    required: false
+  timeout:
+    required: false
+    default: '3600'
+    description: 'Maximum time in seconds to keep sidecar alive'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Verify Linux environment
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" != "Linux" ]]; then
+          echo "This action requires a Linux runner."
+          exit 1
+        fi
+
+    - name: Generate TLS certificates for Docker
+      id: generate-certs
+      run: |
+        # Create directories for Docker certs
+        mkdir -p docker-certs/client
+        
+        # Generate CA certificate
+        openssl genrsa -out docker-certs/ca-key.pem 4096
+        openssl req -new -x509 -days 365 -key docker-certs/ca-key.pem -sha256 \
+          -out docker-certs/ca.pem -subj "/CN=docker-ca"
+        
+        # Generate server certificate
+        openssl genrsa -out docker-certs/server-key.pem 4096
+        openssl req -subj "/CN=docker-server" -sha256 -new \
+          -key docker-certs/server-key.pem -out docker-certs/server.csr
+        
+        # Configure server certificate with serveo.net domains
+        CERTIFICATE_DOMAINS="$(echo "${{ inputs.certificate-domains }}" | sed 's/,/,DNS:/g' | sed 's/^/DNS:/')"
+        echo "subjectAltName = ${CERTIFICATE_DOMAINS},IP:127.0.0.1" > docker-certs/extfile.cnf
+        echo "extendedKeyUsage = serverAuth" >> docker-certs/extfile.cnf
+        
+        # Sign server certificate
+        openssl x509 -req -days 365 -sha256 \
+          -in docker-certs/server.csr \
+          -CA docker-certs/ca.pem \
+          -CAkey docker-certs/ca-key.pem \
+          -CAcreateserial \
+          -out docker-certs/server-cert.pem \
+          -extfile docker-certs/extfile.cnf
+        
+        # Generate client certificate
+        openssl genrsa -out docker-certs/client/key.pem 4096
+        openssl req -subj '/CN=docker-client' -new \
+          -key docker-certs/client/key.pem \
+          -out docker-certs/client.csr
+        
+        # Configure client certificate
+        echo "extendedKeyUsage = clientAuth" > docker-certs/client-extfile.cnf
+        
+        # Sign client certificate
+        openssl x509 -req -days 365 -sha256 \
+          -in docker-certs/client.csr \
+          -CA docker-certs/ca.pem \
+          -CAkey docker-certs/ca-key.pem \
+          -CAcreateserial \
+          -out docker-certs/client/cert.pem \
+          -extfile docker-certs/client-extfile.cnf
+        
+        # Copy CA cert for client
+        cp docker-certs/ca.pem docker-certs/client/ca.pem
+        
+        # Set proper permissions
+        chmod 0400 docker-certs/ca-key.pem docker-certs/server-key.pem docker-certs/client/key.pem
+        chmod 0444 docker-certs/ca.pem docker-certs/server-cert.pem docker-certs/client/cert.pem
+        
+        # Create artifact with client certificates
+        mkdir -p client-certs
+        cp -r docker-certs/client/* client-certs/
+        tar -C client-certs -cf client-certs.tar .
+
+        openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${{ inputs.certificates-encryption-key }}" -pbkdf2
+        rm -rf client-certs/ client-certs.tar
+
+    - name: Start Docker daemon with TLS
+      id: start-docker
+      run: |
+        # Stop the existing Docker daemon
+        echo "Stopping existing Docker daemon..."
+        sudo systemctl stop docker.socket
+        sudo systemctl stop docker
+        
+        # Start Docker daemon with TLS
+        echo "Starting Docker daemon with TLS..."
+        sudo dockerd \
+          --tlsverify \
+          --tlscacert=docker-certs/ca.pem \
+          --tlscert=docker-certs/server-cert.pem \
+          --tlskey=docker-certs/server-key.pem \
+          --host=0.0.0.0:2376 \
+          --host=unix:///var/run/docker.sock &
+        
+        # Wait for Docker daemon to start
+        echo "Waiting for Docker daemon to become available..."
+        export DOCKER_HOST=tcp://localhost:2376
+        export DOCKER_TLS_VERIFY=1
+        export DOCKER_CERT_PATH=$(pwd)/docker-certs/client
+        
+        MAX_ATTEMPTS=30
+        ATTEMPT=0
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT+1))
+          if docker info > /dev/null 2>&1; then
+            echo "Docker daemon started successfully"
+            break
+          fi
+          echo "Waiting for Docker daemon (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+          sleep 2
+        done
+        
+        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+          echo "::error::Timed out waiting for Docker daemon to start"
+          exit 1
+        fi
+
+    - name: Setup Serveo tunnel
+      id: setup-serveo
+      run: |
+        # Start SSH port forwarding via serveo.net with random port (port 0) in background
+        # and redirect output to a file so we can extract the connection details
+        echo "Setting up serveo.net SSH tunnel with random port..."
+        ssh -o StrictHostKeyChecking=no -R 0:localhost:2376 serveo.net > serveo_output.txt 2>&1 &
+        SERVEO_PID=$!
+        echo "SERVEO_PID=$SERVEO_PID" >> $GITHUB_ENV
+        
+        # Wait a few seconds for the connection to establish and output to be written
+        sleep 5
+        
+        # Display serveo output
+        cat serveo_output.txt
+        
+        # Extract the forwarding line from serveo output for the connection details
+        if grep -q "Forwarding" serveo_output.txt; then
+          # Extract the hostname and port from the serveo output
+          CONNECTION_HOST=$(grep "Forwarding" serveo_output.txt | grep -o 'serveo.net:[0-9]*')
+          if [ -n "$CONNECTION_HOST" ]; then
+            CONNECTION_LINE="tcp://${CONNECTION_HOST}"
+            echo "DOCKER_HOST=$CONNECTION_LINE" > sidecar-details.env
+            echo "Serveo.net tunnel established at: $CONNECTION_LINE"
+          else
+            echo "::error::Failed to parse connection details from serveo output"
+            exit 1
+          fi
+        else
+          echo "::error::Failed to establish serveo.net tunnel or extract connection details"
+          exit 1
+        fi
+
+    - name: Upload sidecar connection details
+      uses: actions/upload-artifact@v4
+      with:
+        name: sidecar-details
+        path: sidecar-details.env
+        retention-days: 1
+
+    - name: Keep sidecar alive and monitor for shutdown signal
+      id: keep-alive
+      run: |
+        echo "Sidecar is running..."
+        echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
+        
+        # Start time
+        START_TIME=$(date +%s)
+        TIMEOUT_SECONDS=${{ inputs.timeout }}
+        END_TIME=$((START_TIME + TIMEOUT_SECONDS))
+        
+        # Keep alive loop
+        while true; do
+          CURRENT_TIME=$(date +%s)
+        
+          # Check if timeout has been reached
+          if [ $CURRENT_TIME -gt $END_TIME ]; then
+            echo "Timeout reached, shutting down sidecar"
+            break
+          fi
+        
+          # Check for shutdown signal
+          if gh run download ${{ github.run_id }} --name "stop-sidecar" --repo ${{ github.repository }} 2>/dev/null; then
+            echo "Shutdown signal received, terminating sidecar"
+            break
+          fi
+        
+          # Sleep for a while before checking again
+          echo "Sidecar running... (will timeout in $((END_TIME - CURRENT_TIME)) seconds)"
+          sleep 30
+        done
+        
+        echo "Sidecar is shutting down"
+
+    - name: Cleanup resources
+      if: always()
+      run: |
+        echo "Cleaning up resources..."
+        
+        # Terminate Serveo SSH tunnel
+        if [ -n "$SERVEO_PID" ]; then
+          echo "Closing Serveo SSH tunnel (PID: $SERVEO_PID)"
+          kill $SERVEO_PID || true
+        fi
+        
+        # Stop Docker daemon
+        echo "Stopping Docker daemon"
+        sudo kill $(pgrep dockerd) || true
+        
+        echo "Cleanup complete"
