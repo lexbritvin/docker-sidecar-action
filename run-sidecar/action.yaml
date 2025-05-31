@@ -155,7 +155,7 @@ runs:
         # Reload systemd and restart Docker
         echo "Starting Docker daemon with TLS..."
         sudo systemctl daemon-reload
-        sudo systemctl start docker
+        sudo systemctl restart docker
         
         # Wait for Docker daemon to start
         echo "Waiting for Docker daemon to become available..."
