@@ -7,6 +7,10 @@ inputs:
     required: true
     default: ''
     description: 'Name of the job to wait for completion before shutting down the sidecar'
+  authorized-keys:
+    required: true
+    default: ''
+    description: 'Authorized keys to connect to SSH server for port forwarding'
   timeout:
     required: false
     default: '3600'
@@ -39,6 +43,12 @@ runs:
           echo "wait-for-job input is required."
           exit 1
         fi
+
+    - name: Setup SSH server
+      id: setup-sshd
+      uses: lexbritvin/setup-sshd-action@main
+      with:
+        authorized-keys: ${{ inputs.authorized-keys }}
 
     - name: Generate TLS certificates for Docker
       id: generate-certs
@@ -105,7 +115,7 @@ runs:
         openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${{ inputs.certificates-encryption-key }}" -pbkdf2
         rm -rf client-certs/ client-certs.tar
 
-    - name: Start Docker daemon with TLS
+    - name: Start Docker daemon
       id: start-docker
       shell: bash
       run: |
@@ -168,39 +178,20 @@ runs:
           exit 1
         fi
 
-    - name: Setup Serveo tunnel
-      id: setup-serveo
-      shell: bash
-      run: |
-        # Start SSH port forwarding via serveo.net with random port (port 0) in background
-        # and redirect output to a file so we can extract the connection details
-        echo "Setting up serveo.net SSH tunnel with random port..."
-        ssh -o StrictHostKeyChecking=no -R 0:localhost:2376 serveo.net > serveo_output.txt 2>&1 &
-        SERVEO_PID=$!
-        echo "SERVEO_PID=$SERVEO_PID" >> $GITHUB_ENV
-        
-        # Wait a few seconds for the connection to establish and output to be written
-        sleep 5
-        
-        # Display serveo output
-        cat serveo_output.txt
-        
-        # Extract the forwarding line from serveo output for the connection details
-        if grep -q "Forwarding" serveo_output.txt; then
-          # Extract the hostname and port from the serveo output
-          CONNECTION_HOST=$(grep "Forwarding" serveo_output.txt | grep -o 'serveo.net:[0-9]*')
-          if [ -n "$CONNECTION_HOST" ]; then
-            CONNECTION_LINE="tcp://${CONNECTION_HOST}"
-            echo "DOCKER_HOST=$CONNECTION_LINE" > sidecar-details.env
-            echo "Serveo.net tunnel established at: $CONNECTION_LINE"
-          else
-            echo "::error::Failed to parse connection details from serveo output"
-            exit 1
-          fi
-        else
-          echo "::error::Failed to establish serveo.net tunnel or extract connection details"
-          exit 1
-        fi
+
+
+
+    - name: Forward SSHD port
+      id: setup-sshd-forward
+      uses: lexbritvin/ssh-port-forward-action@main
+      env:
+        SSH_JUMP_HOST: "gh-${{ env.GITHUB_JOB }}-${{ env.GITHUB_RUN_ID }}-sidecar"
+      with:
+        host: serveo.net
+        username: "${{ env.SSH_JUMP_HOST }}"
+        remote_forwards: "${{ env.SSH_JUMP_HOST }}:2222:localhost:2222"
+        known_hosts: |
+          serveo.net ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDxYGqSKVwJpQD1F0YIhz+bd5lpl7YesKjtrn1QD1RjQcSj724lJdCwlv4J8PcLuFFtlAA8AbGQju7qWdMN9ihdHvRcWf0tSjZ+bzwYkxaCydq4JnCrbvLJPwLFaqV1NdcOzY2NVLuX5CfY8VTHrps49LnO0QpGaavqrbk+wTWDD9MHklNfJ1zSFpQAkSQnSNSYi/M2J3hX7P0G2R7dsUvNov+UgNKpc4n9+Lq5Vmcqjqo2KhFyHP0NseDLpgjaqGJq2Kvit3QowhqZkK4K77AA65CxZjdDfpjwZSuX075F9vNi0IFpFkGJW9KlrXzI4lIzSAjPZBURhUb8nZSiPuzj
 
     - name: Upload sidecar connection details
       uses: actions/upload-artifact@v4
@@ -256,17 +247,3 @@ runs:
         done
 
         echo "Sidecar is shutting down"
-
-    - name: Cleanup resources
-      shell: bash
-      if: always()
-      run: |
-        echo "Cleaning up resources..."
-        
-        # Terminate Serveo SSH tunnel
-        if [ -n "$SERVEO_PID" ]; then
-          echo "Closing Serveo SSH tunnel (PID: $SERVEO_PID)"
-          kill $SERVEO_PID || true
-        fi
-        
-        echo "Cleanup complete"
