@@ -167,7 +167,7 @@ runs:
         ATTEMPT=0
         while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
           ATTEMPT=$((ATTEMPT+1))
-          if docker info > /dev/null 2>&1; then
+          if docker info 2>&1; then
             echo "Docker daemon started successfully"
             break
           fi
