@@ -272,5 +272,3 @@ runs:
         done
 
         echo "Sidecar is shutting down"
-
-
