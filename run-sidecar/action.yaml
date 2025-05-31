@@ -245,7 +245,7 @@ runs:
             
             # Count total matrix jobs and completed jobs
             TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
-            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -c -E '^(success|failure|cancelled)$')
+            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$ | wc -l || echo 0')
             
             echo "Matrix job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
             
