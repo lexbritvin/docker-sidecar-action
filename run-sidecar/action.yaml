@@ -7,6 +7,14 @@ inputs:
     required: true
     default: ''
     description: 'Name of the job to wait for completion before shutting down the sidecar'
+  jump-host:
+    required: true
+    default: ''
+    description: 'Jump host server to expose ssh server port'
+  jump-host-key:
+    required: true
+    default: ''
+    description: 'Jump host server key to verify'
   authorized-keys:
     required: true
     default: ''
@@ -68,7 +76,7 @@ runs:
         openssl req -subj "/CN=docker-server" -sha256 -new \
           -key docker-certs/server-key.pem -out docker-certs/server.csr
         
-        # Configure server certificate with serveo.net domains
+        # Configure server certificate domains
         CERTIFICATE_DOMAINS="$(echo "${{ inputs.certificate-domains }}" | sed 's/,/,DNS:/g' | sed 's/^/DNS:/')"
         echo "subjectAltName = ${CERTIFICATE_DOMAINS},IP:127.0.0.1" > docker-certs/extfile.cnf
         echo "extendedKeyUsage = serverAuth" >> docker-certs/extfile.cnf
@@ -186,13 +194,14 @@ runs:
       id: setup-sshd-forward
       uses: lexbritvin/ssh-port-forward-action@main
       with:
-        host: serveo.net
+        host: ${{ inputs.jump-host }}
         username: "gh-${{ github.job }}-${{ github.run_id }}-sidecar"
         password: "any"
         remote_forwards: "gh-${{ github.job }}-${{ github.run_id }}-sidecar:2222:localhost:2222"
         known_hosts: |
-          serveo.net ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDxYGqSKVwJpQD1F0YIhz+bd5lpl7YesKjtrn1QD1RjQcSj724lJdCwlv4J8PcLuFFtlAA8AbGQju7qWdMN9ihdHvRcWf0tSjZ+bzwYkxaCydq4JnCrbvLJPwLFaqV1NdcOzY2NVLuX5CfY8VTHrps49LnO0QpGaavqrbk+wTWDD9MHklNfJ1zSFpQAkSQnSNSYi/M2J3hX7P0G2R7dsUvNov+UgNKpc4n9+Lq5Vmcqjqo2KhFyHP0NseDLpgjaqGJq2Kvit3QowhqZkK4K77AA65CxZjdDfpjwZSuX075F9vNi0IFpFkGJW9KlrXzI4lIzSAjPZBURhUb8nZSiPuzj
+          ${{ inputs.jump-host-key }}
 
+    # TODO: Update connection details with host, username, etc.
     - name: Upload sidecar connection details
       uses: actions/upload-artifact@v4
       with:
