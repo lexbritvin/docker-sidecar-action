@@ -3,6 +3,10 @@ description: 'Set up a Linux Docker sidecar for Windows and macOS runners'
 author: 'Aleksandr Britvin'
 
 inputs:
+  tls-verify:
+    required: false
+    default: 'false'
+    description: 'Enable TLS verification for Docker client'
   certificates-encryption-key:
     description: 'Key to encrypt certificates before uploading'
     default: ''
@@ -11,5 +15,3 @@ inputs:
 runs:
   using: 'node20'
   main: dist/index.js
-  post: dist/index.js
-  post-if: 'always()'

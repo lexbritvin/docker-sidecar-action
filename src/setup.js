@@ -8,15 +8,43 @@ export async function setup() {
   // Wait for a sidecar to start and provide connection details
   core.info("Waiting for sidecar to start...");
 
+  // Wait for a sidecar to upload connection details.
+  if (!await waitSidecarStarted()) {
+    throw new Error("Timed out waiting for sidecar to start");
+  }
+
+  // Read connection details
+  const details = fs.readFileSync("sidecar-details.env", "utf8");
+  const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
+
+  // Set Docker host
+  core.exportVariable("DOCKER_HOST", dockerHost);
+
+  // Check if TLS verification is enabled
+  const tlsVerify = core.getInput("tls-verify") === "true";
+  if (tlsVerify) {
+    const certPath = await setupDockerCertificates();
+    // Set env variables for docker execution
+    core.exportVariable("DOCKER_CERT_PATH", certPath);
+    core.exportVariable("DOCKER_TLS_VERIFY", "1");
+  }
+
+  // Log Docker environment variables
+  core.info("Docker environment variables:");
+  core.info(`DOCKER_HOST=${process.env.DOCKER_HOST}`);
+  core.info(`DOCKER_CERT_PATH=${process.env.DOCKER_CERT_PATH || ""}`);
+  core.info(`DOCKER_TLS_VERIFY=${process.env.DOCKER_TLS_VERIFY || ""}`);
+
+  core.info("Remote Docker setup complete");
+}
+
+async function waitSidecarStarted() {
   const artifact = new DefaultArtifactClient();
   const maxAttempts = 30;
   let attempt = 0;
   let sidecarStarted = false;
-
-  // Wait for a sidecar to upload connection details.
   while (attempt < maxAttempts) {
     attempt++;
-
     try {
       const detailsInfo = await artifact.getArtifact(`sidecar-details`);
       if (detailsInfo.artifact.id) {
@@ -38,15 +66,11 @@ export async function setup() {
     await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
   }
 
-  if (!sidecarStarted) {
-    throw new Error("Timed out waiting for sidecar to start");
-  }
+  return sidecarStarted;
+}
 
-  // Read connection details
-  const details = fs.readFileSync("sidecar-details.env", "utf8");
-  const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
-
-  // Download Docker certificates
+async function setupDockerCertificates() {
+  const artifact = new DefaultArtifactClient();
   const dockerCertsName = "docker-certs";
   const certsInfo = await artifact.getArtifact(dockerCertsName);
   if (!certsInfo.artifact.id) {
@@ -83,7 +107,7 @@ export async function setup() {
     fs.mkdirSync(dockerCertsName);
     await exec.exec("tar", [
       "-C", dockerCertsName,
-      "-xf", decryptedFile
+      "-xf", decryptedFile,
     ]);
 
     // Clean up intermediate files
@@ -93,19 +117,6 @@ export async function setup() {
     throw new Error(`Failed to process Docker certificates: ${error.message}`);
   }
 
-  // Set certificates path
-  const certPath = path.join(process.cwd(), dockerCertsName);
-
-  // Set env variables for docker execution
-  core.exportVariable("DOCKER_HOST", dockerHost);
-  core.exportVariable("DOCKER_CERT_PATH", certPath);
-  core.exportVariable("DOCKER_TLS_VERIFY", "1");
-
-  // Log Docker environment variables
-  core.info("Docker environment variables:");
-  core.info(`DOCKER_HOST=${process.env.DOCKER_HOST}`);
-  core.info(`DOCKER_CERT_PATH=${process.env.DOCKER_CERT_PATH}`);
-  core.info(`DOCKER_TLS_VERIFY=${process.env.DOCKER_TLS_VERIFY || ""}`);
-
-  core.info("Remote Docker setup complete");
+  // Set certificates path.
+  return path.join(process.cwd(), dockerCertsName);
 }

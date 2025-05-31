@@ -3,18 +3,26 @@ description: 'Starts a Linux sidecar with exposed Docker Host'
 author: 'Aleksandr Britvin'
 
 inputs:
+  wait-for-job:
+    required: true
+    default: ''
+    description: 'Name of the job to wait for completion before shutting down the sidecar'
+  timeout:
+    required: false
+    default: '3600'
+    description: 'Maximum time in seconds to keep sidecar alive'
+  tls-verify:
+    required: false
+    default: 'false'
+    description: 'Enable TLS verification for Docker daemon'
   certificate-domains:
     description: 'Comma separated allowed domains for the result certificates'
-    default: 'localhost,serveo.net,*.serveo.net'
+    default: 'localhost'
     required: false
   certificates-encryption-key:
     description: 'Key to encrypt certificates before uploading'
     default: ''
     required: false
-  timeout:
-    required: false
-    default: '3600'
-    description: 'Maximum time in seconds to keep sidecar alive'
 
 runs:
   using: "composite"
@@ -27,9 +35,15 @@ runs:
           exit 1
         fi
 
+        if [[ -z "${{ inputs.wait-for-job }}" ]]; then
+          echo "wait-for-job input is required."
+          exit 1
+        fi
+
     - name: Generate TLS certificates for Docker
       id: generate-certs
       shell: bash
+      if: ${{ inputs.tls-verify == 'true' }}
       run: |
         # Create directories for Docker certs
         mkdir -p docker-certs/client
@@ -95,26 +109,47 @@ runs:
       id: start-docker
       shell: bash
       run: |
-        # Stop the existing Docker daemon
-        echo "Stopping existing Docker daemon..."
-        sudo systemctl stop docker.socket
-        sudo systemctl stop docker
-        
-        # Start Docker daemon with TLS
+        # Configure Docker daemon
+        echo "Configuring Docker daemon..."
+        if [[ "${{ inputs.tls-verify }}" == "true" ]]; then
+            sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+            {
+              "tls": true,
+              "tlsverify": true,
+              "tlscacert": "$(pwd)/docker-certs/ca.pem",
+              "tlscert": "$(pwd)/docker-certs/server-cert.pem",
+              "tlskey": "$(pwd)/docker-certs/server-key.pem",
+              "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
+            }
+            EOF
+          else
+            sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+            {
+              "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
+            }
+            EOF
+        fi
+      
+        # Create systemd override directory
+        sudo mkdir -p /etc/systemd/system/docker.service.d/
+      
+        # Configure systemd to use the daemon.json
+        sudo tee /etc/systemd/system/docker.service.d/override.conf > /dev/null <<EOF
+        [Service]
+        ExecStart=
+        ExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock
+        EOF
+      
+        # Reload systemd and restart Docker
         echo "Starting Docker daemon with TLS..."
-        sudo dockerd \
-          --tlsverify \
-          --tlscacert=docker-certs/ca.pem \
-          --tlscert=docker-certs/server-cert.pem \
-          --tlskey=docker-certs/server-key.pem \
-          --host=0.0.0.0:2376 \
-          --host=unix:///var/run/docker.sock &
+        sudo systemctl daemon-reload
+        sudo systemctl start docker
         
         # Wait for Docker daemon to start
         echo "Waiting for Docker daemon to become available..."
         export DOCKER_HOST=tcp://localhost:2376
-        export DOCKER_TLS_VERIFY=1
-        export DOCKER_CERT_PATH=$(pwd)/docker-certs/client
+        export DOCKER_TLS_VERIFY=${{ inputs.tls-verify == 'true' && '1' || '' }}
+        export DOCKER_CERT_PATH=${{ inputs.tls-verify == 'true' && '$(pwd)/docker-certs/client' || '' }}
         
         MAX_ATTEMPTS=30
         ATTEMPT=0
@@ -176,6 +211,7 @@ runs:
 
     - name: Upload Docker client certificates
       uses: actions/upload-artifact@v4
+      if: ${{ inputs.tls-verify == 'true' }}
       with:
         name: docker-certs
         path: client-certs.enc
@@ -188,33 +224,37 @@ runs:
         echo "Sidecar is running..."
         echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
         GH_TOKEN="${{ github.token }}"
-        
+
         # Start time
         START_TIME=$(date +%s)
         TIMEOUT_SECONDS=${{ inputs.timeout }}
         END_TIME=$((START_TIME + TIMEOUT_SECONDS))
-        
+
         # Keep alive loop
         while true; do
           CURRENT_TIME=$(date +%s)
-        
+
           # Check if timeout has been reached
           if [ $CURRENT_TIME -gt $END_TIME ]; then
             echo "Timeout reached, shutting down sidecar"
             break
           fi
-        
-          # Check for shutdown signal
-          if gh run download ${{ github.run_id }} --name "stop-sidecar" --repo ${{ github.repository }} 2>/dev/null; then
-            echo "Shutdown signal received, terminating sidecar"
-            break
+
+          # Check if a specific job has completed (if specified)
+          if [ -n "${{ inputs.wait-for-job }}" ]; then
+            JOB_STATUS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name == "'"${{ inputs.wait-for-job }}"'") | .conclusion')
+
+            if [ "$JOB_STATUS" == "success" ] || [ "$JOB_STATUS" == "failure" ] || [ "$JOB_STATUS" == "cancelled" ]; then
+              echo "Target job '${{ inputs.wait-for-job }}' has completed with status: $JOB_STATUS, terminating sidecar"
+              break
+            fi
           fi
-        
+
           # Sleep for a while before checking again
           echo "Sidecar running... (will timeout in $((END_TIME - CURRENT_TIME)) seconds)"
           sleep 30
         done
-        
+
         echo "Sidecar is shutting down"
 
     - name: Cleanup resources
@@ -228,9 +268,5 @@ runs:
           echo "Closing Serveo SSH tunnel (PID: $SERVEO_PID)"
           kill $SERVEO_PID || true
         fi
-        
-        # Stop Docker daemon
-        echo "Stopping Docker daemon"
-        sudo kill $(pgrep dockerd) || true
         
         echo "Cleanup complete"
