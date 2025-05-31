@@ -17,7 +17,7 @@ inputs:
     description: 'Maximum time in seconds to keep sidecar alive'
   tls-verify:
     required: false
-    default: 'false'
+    default: 'true'
     description: 'Enable TLS verification for Docker daemon'
   certificate-domains:
     description: 'Comma separated allowed domains for the result certificates'
@@ -153,7 +153,7 @@ runs:
         EOF
       
         # Reload systemd and restart Docker
-        echo "Starting Docker daemon with TLS..."
+        echo "Restarting Docker daemon..."
         sudo systemctl daemon-reload
         sudo systemctl restart docker
         
@@ -167,7 +167,7 @@ runs:
         ATTEMPT=0
         while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
           ATTEMPT=$((ATTEMPT+1))
-          if docker info 2>&1; then
+          if docker info > /dev/null 2>&1; then
             echo "Docker daemon started successfully"
             break
           fi
@@ -180,16 +180,14 @@ runs:
           exit 1
         fi
 
-
-
-
     - name: Forward SSHD port
       id: setup-sshd-forward
       uses: lexbritvin/ssh-port-forward-action@main
       with:
         host: serveo.net
-        username: "gh-${{ env.GITHUB_JOB }}-${{ env.GITHUB_RUN_ID }}-sidecar"
-        remote_forwards: "gh-${{ env.GITHUB_JOB }}-${{ env.GITHUB_RUN_ID }}-sidecar:2222:localhost:2222"
+        username: "gh-${{ github.job }}-${{ github.run_id }}-sidecar"
+        password: "any"
+        remote_forwards: "gh-${{ github.job }}-${{ github.run_id }}-sidecar:2222:localhost:2222"
         known_hosts: |
           serveo.net ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDxYGqSKVwJpQD1F0YIhz+bd5lpl7YesKjtrn1QD1RjQcSj724lJdCwlv4J8PcLuFFtlAA8AbGQju7qWdMN9ihdHvRcWf0tSjZ+bzwYkxaCydq4JnCrbvLJPwLFaqV1NdcOzY2NVLuX5CfY8VTHrps49LnO0QpGaavqrbk+wTWDD9MHklNfJ1zSFpQAkSQnSNSYi/M2J3hX7P0G2R7dsUvNov+UgNKpc4n9+Lq5Vmcqjqo2KhFyHP0NseDLpgjaqGJq2Kvit3QowhqZkK4K77AA65CxZjdDfpjwZSuX075F9vNi0IFpFkGJW9KlrXzI4lIzSAjPZBURhUb8nZSiPuzj
 

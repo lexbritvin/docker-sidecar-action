@@ -5,7 +5,7 @@ author: 'Aleksandr Britvin'
 inputs:
   tls-verify:
     required: false
-    default: 'false'
+    default: 'true'
     description: 'Enable TLS verification for Docker client'
   certificates-encryption-key:
     description: 'Key to encrypt certificates before uploading'
