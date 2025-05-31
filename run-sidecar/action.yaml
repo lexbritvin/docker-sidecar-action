@@ -234,23 +234,32 @@ runs:
 
           # Check if a specific job has completed (if specified)
           if [ -n "${{ inputs.wait-for-job }}" ]; then
-            JOB_NAME_PREFIX="${{ inputs.wait-for-job }}"
-            echo "Checking matrix jobs starting with: $JOB_NAME_PREFIX"
-          
-            JOBS_JSON=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs)
-          
-            # Filter jobs whose name starts with the input (matrix jobs have names like "test (ubuntu-latest)")
-            INCOMPLETE=$(echo "$JOBS_JSON" | jq -r \
-              --arg prefix "$JOB_NAME_PREFIX" \
-              '.jobs[] | select(.name | startswith($prefix)) | select(.conclusion == null) | .name')
-          
-            if [ -z "$INCOMPLETE" ]; then
-              echo "All jobs for '$JOB_NAME_PREFIX' have completed."
-              echo "Terminating sidecar..."
+            # Get all jobs matching the matrix job name pattern
+            MATRIX_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("'"${{ inputs.wait-for-job }}"'")) | .conclusion')
+            
+            # Check if we have any matrix jobs
+            if [ -z "$MATRIX_JOBS" ]; then
+              echo "No matrix jobs found matching pattern '${{ inputs.wait-for-job }}'"
+              continue
+            fi
+            
+            # Count total matrix jobs and completed jobs
+            TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
+            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$' | wc -l)
+            
+            echo "Matrix job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
+            
+            # Check if all matrix jobs are completed
+            if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ]; then
+              echo "All matrix jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
+              
+              # Optional: Show summary of results
+              SUCCESS_COUNT=$(echo "$MATRIX_JOBS" | grep '^success$' | wc -l)
+              FAILURE_COUNT=$(echo "$MATRIX_JOBS" | grep '^failure$' | wc -l)
+              CANCELLED_COUNT=$(echo "$MATRIX_JOBS" | grep '^cancelled$' | wc -l)
+              
+              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
               break
-            else
-              echo "Some jobs for '$JOB_NAME_PREFIX' are still running:"
-              echo "$INCOMPLETE"
             fi
           fi
 
