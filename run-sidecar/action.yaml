@@ -234,11 +234,23 @@ runs:
 
           # Check if a specific job has completed (if specified)
           if [ -n "${{ inputs.wait-for-job }}" ]; then
-            JOB_STATUS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name == "'"${{ inputs.wait-for-job }}"'") | .conclusion')
-
-            if [ "$JOB_STATUS" == "success" ] || [ "$JOB_STATUS" == "failure" ] || [ "$JOB_STATUS" == "cancelled" ]; then
-              echo "Target job '${{ inputs.wait-for-job }}' has completed with status: $JOB_STATUS, terminating sidecar"
+            JOB_NAME_PREFIX="${{ inputs.wait-for-job }}"
+            echo "Checking matrix jobs starting with: $JOB_NAME_PREFIX"
+          
+            JOBS_JSON=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs)
+          
+            # Filter jobs whose name starts with the input (matrix jobs have names like "test (ubuntu-latest)")
+            INCOMPLETE=$(echo "$JOBS_JSON" | jq -r \
+              --arg prefix "$JOB_NAME_PREFIX" \
+              '.jobs[] | select(.name | startswith($prefix)) | select(.conclusion == null) | .name')
+          
+            if [ -z "$INCOMPLETE" ]; then
+              echo "All jobs for '$JOB_NAME_PREFIX' have completed."
+              echo "Terminating sidecar..."
               break
+            else
+              echo "Some jobs for '$JOB_NAME_PREFIX' are still running:"
+              echo "$INCOMPLETE"
             fi
           fi
 
@@ -248,3 +260,5 @@ runs:
         done
 
         echo "Sidecar is shutting down"
+
+
