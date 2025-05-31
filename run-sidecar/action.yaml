@@ -235,10 +235,7 @@ runs:
           # Check if a specific job has completed (if specified)
           if [ -n "${{ inputs.wait-for-job }}" ]; then
             # Get all jobs matching the matrix job name pattern
-            echo "test 1"
             MATRIX_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("'"${{ inputs.wait-for-job }}"'")) | .conclusion')
-            
-            echo "test 2"
         
             # Check if we have any matrix jobs
             if [ -z "$MATRIX_JOBS" ]; then
@@ -255,13 +252,6 @@ runs:
             # Check if all matrix jobs are completed
             if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ]; then
               echo "All matrix jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
-              
-              # Optional: Show summary of results
-              SUCCESS_COUNT=$(echo "$MATRIX_JOBS" | grep '^success$' | wc -l)
-              FAILURE_COUNT=$(echo "$MATRIX_JOBS" | grep '^failure$' | wc -l)
-              CANCELLED_COUNT=$(echo "$MATRIX_JOBS" | grep '^cancelled$' | wc -l)
-              
-              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
               break
             fi
           fi
