@@ -139,6 +139,8 @@ runs:
           }
         EOF
         fi
+        
+        cat /etc/docker/daemon.json
       
         # Create systemd override directory
         sudo mkdir -p /etc/systemd/system/docker.service.d/
