@@ -245,13 +245,15 @@ runs:
             
             # Count total matrix jobs and completed jobs
             TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
-            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$' | wc -l)
+            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -c -E '^(success|failure|cancelled)$')
             
             echo "Matrix job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
             
             # Check if all matrix jobs are completed
             if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ]; then
               echo "All matrix jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
+              
+              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
               break
             fi
           fi
