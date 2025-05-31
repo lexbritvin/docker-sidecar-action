@@ -122,22 +122,22 @@ runs:
         # Configure Docker daemon
         echo "Configuring Docker daemon..."
         if [[ "${{ inputs.tls-verify }}" == "true" ]]; then
-            sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-            {
-              "tls": true,
-              "tlsverify": true,
-              "tlscacert": "$(pwd)/docker-certs/ca.pem",
-              "tlscert": "$(pwd)/docker-certs/server-cert.pem",
-              "tlskey": "$(pwd)/docker-certs/server-key.pem",
-              "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-            }
-            EOF
-          else
-            sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-            {
-              "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-            }
-            EOF
+          sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+          {
+            "tls": true,
+            "tlsverify": true,
+            "tlscacert": "$(pwd)/docker-certs/ca.pem",
+            "tlscert": "$(pwd)/docker-certs/server-cert.pem",
+            "tlskey": "$(pwd)/docker-certs/server-key.pem",
+            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
+          }
+        EOF
+        else
+          sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+          {
+            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
+          }
+        EOF
         fi
       
         # Create systemd override directory
