@@ -72,14 +72,14 @@ jobs:
           PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
         run: |
           # Create SSH config directory if it doesn't exist
-          mkdir -p ~/.ssh
+          mkdir -p $HOME/.ssh
           
-          PRIVATE_KEY_PATH="~/.ssh/id_ed25519_tmp"
+          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
           
           # Create SSH config file
-          cat > ~/.ssh/config << EOF
+          cat > $HOME/.ssh/config << EOF
           Host jump-server
             HostName ${{ env.SSH_JUMP_SERVER }}
             User runner
@@ -106,7 +106,7 @@ jobs:
           EOF
           
           echo "SSH config created:"
-          cat ~/.ssh/config
+          cat $HOME/.ssh/config
 
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
