@@ -66,18 +66,6 @@ jobs:
         with:
           path: ${{ env.TMP_WORKING_DIR }}
 
-      - name: Export SSH key to file
-        id: export-key
-        shell: bash
-        env:
-          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
-        run: |
-          pwd
-          mkdir -p ~/.ssh
-          echo "$PRIVATE_KEY" > ~/.ssh/id_ed25519_tmp
-          chmod 600 ~/.ssh/id_ed25519_tmp
-          echo "key_path=~/.ssh/id_ed25519_tmp" >> $GITHUB_OUTPUT
-
       - name: Setup SSH Config
         shell: bash
         env:
@@ -85,10 +73,10 @@ jobs:
         run: |
           # Create SSH config directory if it doesn't exist
           mkdir -p ~/.ssh
-          echo "$PRIVATE_KEY" > ~/.ssh/id_ed25519_tmp
+          
           PRIVATE_KEY_PATH="~/.ssh/id_ed25519_tmp"
+          echo "$PRIVATE_KEY" > $PRIVATE_KEY_PATH
           chmod 600 $PRIVATE_KEY_PATH
-          echo "key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
           
           # Create SSH config file
           cat > ~/.ssh/config << EOF

@@ -197,7 +197,6 @@ runs:
       with:
         host: ${{ inputs.jump-host }}
         username: "gh-${{ github.job }}-${{ github.run_id }}-sidecar"
-        password: "any"
         remote_forwards: "gh-${{ github.job }}-${{ github.run_id }}-sidecar:2222:localhost:2222"
         known_hosts: |
           ${{ inputs.jump-host-key }}
