@@ -78,6 +78,48 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519_tmp
           echo "key_path=~/.ssh/id_ed25519_tmp" >> $GITHUB_OUTPUT
 
+      - name: Setup SSH Config
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
+        run: |
+          # Create SSH config directory if it doesn't exist
+          mkdir -p ~/.ssh
+          echo "$PRIVATE_KEY" > ~/.ssh/id_ed25519_tmp
+          PRIVATE_KEY_PATH="~/.ssh/id_ed25519_tmp"
+          chmod 600 $PRIVATE_KEY_PATH
+          echo "key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
+          
+          # Create SSH config file
+          cat > ~/.ssh/config << EOF
+          Host jump-server
+            HostName ${{ env.SSH_JUMP_SERVER }}
+            User runner
+            IdentityFile $PRIVATE_KEY_PATH
+            StrictHostKeyChecking no
+            PreferredAuthentications publickey
+          
+          Host docker-sidecar
+            HostName ${{ env.SSH_JUMP_HOST }}
+            Port 2222
+            User runner
+            IdentityFile $PRIVATE_KEY_PATH
+            ProxyJump jump-server
+            StrictHostKeyChecking no
+            PreferredAuthentications publickey
+          
+          Host docker-sidecar-direct
+            HostName localhost
+            Port 2223
+            User runner
+            IdentityFile $PRIVATE_KEY_PATH
+            StrictHostKeyChecking no
+            PreferredAuthentications publickey
+          EOF
+          
+          echo "SSH config created:"
+          cat ~/.ssh/config
+
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
@@ -86,13 +128,8 @@ jobs:
       - name: Forward Docker port
         uses: lexbritvin/ssh-port-forward-action@main
         with:
-          host: ${{ env.SSH_JUMP_HOST }}
-          port: 2222
-          username: "runner"
-          jump_hosts: ${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}
-          private_key_path: ${{ steps.export-key.outputs.key_path }}
+          host: docker-sidecar
           local_forwards: "2376:localhost:2376,2223:localhost:2222"
-          ssh_flags: -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
@@ -112,7 +149,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             echo "Installing Mutagen for Windows..."
             mkdir -p ~/bin
-            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_windows_${ARCH}_${MUTAGEN_VERSION}.zip" -o mutagen.zip
+            curl -s -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_windows_${ARCH}_${MUTAGEN_VERSION}.zip" -o mutagen.zip
             unzip -o mutagen.zip
             mv mutagen.exe ~/bin/
             rm mutagen.zip
@@ -120,12 +157,12 @@ jobs:
           
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             echo "Installing Mutagen for macOS..."
-            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_darwin_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
+            curl -s -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_darwin_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
             sudo mv mutagen /usr/local/bin/
           
           else
             echo "Installing Mutagen for Linux..."
-            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_linux_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
+            curl -s -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_linux_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
             sudo mv mutagen /usr/local/bin/
           fi
           
@@ -145,9 +182,6 @@ jobs:
           echo "Current directory: $CURRENT_DIR"
           echo "Will sync to remote: $CURRENT_DIR"
           
-          echo "Adding remote host key to known_hosts"
-          ssh-keyscan -p 2223 localhost >> ~/.ssh/known_hosts 2>/dev/null || true
-          
           # Create sync session preserving the exact path structure
           mutagen sync create \
             --name "workspace-sync" \
@@ -158,7 +192,7 @@ jobs:
             --ignore "*.tmp" \
             --ignore ".DS_Store" \
             "$CURRENT_DIR" \
-            "runner@localhost:2223:$CURRENT_DIR"
+            "docker-sidecar-direct:$CURRENT_DIR"
           
           # Wait for initial sync
           echo "Waiting for initial sync to complete..."
