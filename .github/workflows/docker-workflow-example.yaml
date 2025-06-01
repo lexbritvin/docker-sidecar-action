@@ -99,26 +99,38 @@ jobs:
       - name: Install Mutagen
         shell: bash
         run: |
+          # Set Mutagen version
+          MUTAGEN_VERSION="v0.18.1"
+          
+          # Detect architecture
+          case $(uname -m) in
+            x86_64) ARCH="amd64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+          esac
+          
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            # Install Chocolatey if not present
-            powershell -Command "
-              if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
-                Set-ExecutionPolicy Bypass -Scope Process -Force
-                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-              }
-              choco install mutagen -y
-            "
+            echo "Installing Mutagen for Windows..."
+            mkdir -p ~/bin
+            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_windows_${ARCH}_${MUTAGEN_VERSION}.zip" -o mutagen.zip
+            unzip -o mutagen.zip
+            mv mutagen.exe ~/bin/
+            rm mutagen.zip
+            echo "$HOME/bin" >> $GITHUB_PATH
+          
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            # Install via Homebrew
-            brew install mutagen-io/mutagen/mutagen
+            echo "Installing Mutagen for macOS..."
+            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_darwin_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
+            sudo mv mutagen /usr/local/bin/
+          
           else
-            # Linux - download binary
-            curl -L https://github.com/mutagen-io/mutagen/releases/latest/download/mutagen_linux_amd64.tar.gz | tar -xz
+            echo "Installing Mutagen for Linux..."
+            curl -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_linux_${ARCH}_${MUTAGEN_VERSION}.tar.gz" | tar -xz
             sudo mv mutagen /usr/local/bin/
           fi
           
           # Verify installation
+          echo "Verifying Mutagen installation..."
           mutagen version
 
       - name: Setup Mutagen Sync with PWD Path Preservation
