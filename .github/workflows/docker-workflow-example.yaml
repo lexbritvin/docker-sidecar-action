@@ -160,7 +160,7 @@ jobs:
             --ignore "*.tmp" \
             --ignore ".DS_Store" \
             "$CURRENT_DIR" \
-            "runner@$localhost:2223:$CURRENT_DIR"
+            "runner@localhost:2223:$CURRENT_DIR"
           
           # Wait for initial sync
           echo "Waiting for initial sync to complete..."
