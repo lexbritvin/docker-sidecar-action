@@ -1,0 +1,200 @@
+name: Docker Workflow Example
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  SSH_JUMP_SERVER: serveo.net
+  SSH_JUMP_HOST_KEY: |
+    serveo.net ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDxYGqSKVwJpQD1F0YIhz+bd5lpl7YesKjtrn1QD1RjQcSj724lJdCwlv4J8PcLuFFtlAA8AbGQju7qWdMN9ihdHvRcWf0tSjZ+bzwYkxaCydq4JnCrbvLJPwLFaqV1NdcOzY2NVLuX5CfY8VTHrps49LnO0QpGaavqrbk+wTWDD9MHklNfJ1zSFpQAkSQnSNSYi/M2J3hX7P0G2R7dsUvNov+UgNKpc4n9+Lq5Vmcqjqo2KhFyHP0NseDLpgjaqGJq2Kvit3QowhqZkK4K77AA65CxZjdDfpjwZSuX075F9vNi0IFpFkGJW9KlrXzI4lIzSAjPZBURhUb8nZSiPuzj
+
+jobs:
+  client-ssh-key:
+    name: Generate SSH Key
+    runs-on: ubuntu-latest
+    outputs:
+      private-key: ${{ steps.generate-key.outputs.private_key }}
+      public-key: ${{ steps.generate-key.outputs.public_key }}
+    steps:
+      - name: Generate ED25519 SSH key pair
+        id: generate-key
+        run: |
+          ssh-keygen -t ed25519 -N "" -f ./id_ed25519
+
+          echo "Export private ssh key"
+          {
+            echo "private_key<<EOF"
+            cat ./id_ed25519
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          # TODO: Find a way to protect private key. Masking doesn't work to share between jobs.
+
+          echo "public_key=$(cat ./id_ed25519.pub)" >> $GITHUB_OUTPUT
+  
+  linux-sidecar:
+    name: Linux Docker Sidecar
+    needs: [client-ssh-key]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Linux Docker sidecar
+        uses: lexbritvin/docker-sidecar-action/run-sidecar@main
+        with:
+          wait-for-job: "Windows Job"
+          jump-host: ${{ env.SSH_JUMP_SERVER }}
+          jump-host-key: ${{ env.SSH_JUMP_HOST_KEY }}
+          authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
+  
+  windows-job:
+    name: Windows Job
+    needs: [client-ssh-key]
+    runs-on: windows-latest
+    env:
+      SSH_JUMP_HOST: gh-linux-sidecar-${{ github.run_id }}-sidecar
+    steps:
+      - name: Create run subdir
+        shell: bash
+        run: |
+          TMPDIR="run-$(date +%s)-$RANDOM"
+          mkdir -p "$TMPDIR"
+          echo "TMP_WORKING_DIR=$TMPDIR" >> $GITHUB_ENV
+          echo "Created temporary directory: $TMPDIR"
+          cd $TMPDIR
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.TMP_WORKING_DIR }}
+
+      - name: Export SSH key to file
+        id: export-key
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
+        run: |
+          pwd
+          mkdir -p ~/.ssh
+          echo "$PRIVATE_KEY" > ~/.ssh/id_ed25519_tmp
+          chmod 600 ~/.ssh/id_ed25519_tmp
+          echo "key_path=~/.ssh/id_ed25519_tmp" >> $GITHUB_OUTPUT
+
+      # Set up the Docker sidecar environment
+      - name: Set up Remote Docker
+        id: docker-setup
+        uses: lexbritvin/docker-sidecar-action@main
+
+      - name: Forward Docker port
+        uses: lexbritvin/ssh-port-forward-action@main
+        with:
+          host: ${{ env.SSH_JUMP_HOST }}
+          port: 2222
+          username: "runner"
+          jump_hosts: ${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}
+          private_key_path: ${{ steps.export-key.outputs.key_path }}
+          local_forwards: "2376:localhost:2376"
+          ssh_flags: -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey
+          known_hosts: |
+            ${{ env.SSH_JUMP_HOST_KEY }}
+
+      - name: Install Mutagen
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # Install Chocolatey if not present
+            powershell -Command "
+              if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
+                Set-ExecutionPolicy Bypass -Scope Process -Force
+                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+              }
+              choco install mutagen -y
+            "
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Install via Homebrew
+            brew install mutagen-io/mutagen/mutagen
+          else
+            # Linux - download binary
+            curl -L https://github.com/mutagen-io/mutagen/releases/latest/download/mutagen_linux_amd64.tar.gz | tar -xz
+            sudo mv mutagen /usr/local/bin/
+          fi
+          
+          # Verify installation
+          mutagen version
+
+      - name: Setup Mutagen Sync with PWD Path Preservation
+        shell: bash
+        working-directory: ${{ env.TMP_WORKING_DIR }}
+        run: |
+          # Start Mutagen daemon
+          mutagen daemon start
+          
+          # Get current working directory
+          CURRENT_DIR=$(pwd)
+          echo "Current directory: $CURRENT_DIR"
+          echo "Will sync to remote: $CURRENT_DIR"
+          
+          # Create some test content to verify sync
+          echo "Test file from $RUNNER_OS runner" > test-sync.txt
+          echo "Current directory: $CURRENT_DIR" >> test-sync.txt
+          echo "Created at $(date)" >> test-sync.txt
+          
+          # Create sync session preserving the exact path structure
+          mutagen sync create \
+            --name "workspace-sync" \
+            --sync-mode "two-way-resolved" \
+            --ignore ".git" \
+            --ignore "node_modules" \
+            --ignore "*.log" \
+            --ignore "*.tmp" \
+            --ignore ".DS_Store" \
+            --ssh-option "ProxyJump=${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}" \
+            --ssh-option "Port=2222" \
+            --ssh-option "IdentityFile=${{ steps.export-key.outputs.key_path }}" \
+            --ssh-option "StrictHostKeyChecking=no" \
+            --ssh-option "PreferredAuthentications=publickey" \
+            --ssh-option "UserKnownHostsFile=/dev/null" \
+            --ssh-option "LogLevel=ERROR" \
+            "$CURRENT_DIR" \
+            "runner@${{ env.SSH_JUMP_HOST }}:$CURRENT_DIR"
+          
+          # Wait for initial sync
+          echo "Waiting for initial sync to complete..."
+          mutagen sync monitor --name "workspace-sync" --timeout 60
+          
+          # Show sync status
+          mutagen sync list --long
+
+#      - name: Run Docker container - Alpine
+#        working-directory: ${{ env.TMP_WORKING_DIR }}
+#        run: |
+#          docker run --rm alpine:latest sh -c "echo 'Hello from Alpine container'; uname -a"
+#
+#      - name: Run Docker container - Node.js
+#        working-directory: ${{ env.TMP_WORKING_DIR }}
+#        run: |
+#          docker run --rm node:18-alpine node -e "console.log('Node.js version:', process.version)"
+
+# TODO: Install mutagen
+# TODO: Change GOTMPDIR
+      - name: Run Docker container with volume mount
+        shell: bash
+        working-directory: ${{ env.TMP_WORKING_DIR }}
+        run: |
+          # Create a test file in the workspace
+          echo "Hello from the host" > test-file.txt
+
+          # Mount the workspace and access the file from the container
+          docker run --rm -v "$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+
+          # Verify the file was modified
+          cat test-file.txt
+
+      - name: Cleanup Mutagen
+        if: always()
+        shell: bash
+        run: |
+          # Stop sync sessions
+          mutagen sync terminate --name "workspace-sync" || true
+          
+          # Stop daemon
+          mutagen daemon stop || true

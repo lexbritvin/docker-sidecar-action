@@ -16,12 +16,12 @@ export async function setup() {
   // Read connection details
   const details = fs.readFileSync("sidecar-details.env", "utf8");
   const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
+  const tlsVerify = details.match(/DOCKER_TLS_VERIFY=(.*)/)[1] === "1";
 
   // Set Docker host
   core.exportVariable("DOCKER_HOST", dockerHost);
 
   // Check if TLS verification is enabled
-  const tlsVerify = core.getInput("tls-verify") === "true";
   if (tlsVerify) {
     const certPath = await setupDockerCertificates();
     // Set env variables for docker execution
