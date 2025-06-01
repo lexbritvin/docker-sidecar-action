@@ -91,7 +91,7 @@ jobs:
           username: "runner"
           jump_hosts: ${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}
           private_key_path: ${{ steps.export-key.outputs.key_path }}
-          local_forwards: "2376:localhost:2376,2222:localhost:2223"
+          local_forwards: "2376:localhost:2376,2223:localhost:2222"
           ssh_flags: -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
