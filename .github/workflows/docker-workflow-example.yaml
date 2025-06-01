@@ -121,12 +121,12 @@ jobs:
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
-#      - name: 🛠 Set up tmate session 🛠
-#        id: tmate
-#        uses: mxschmitt/action-tmate@v3
-#        if: ${{ failure() }}
-#        with:
-#          limit-access-to-actor: true
+      - name: 🛠 Set up tmate session 🛠
+        id: tmate
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
+        with:
+          limit-access-to-actor: true
 
       - name: Install Mutagen
         shell: bash
