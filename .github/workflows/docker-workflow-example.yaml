@@ -78,12 +78,19 @@ jobs:
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
           
+          # Convert path to Windows format when on Windows
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            PRIVATE_KEY_PATH_FOR_CONFIG=$(cygpath -w "$PRIVATE_KEY_PATH")
+          else
+            PRIVATE_KEY_PATH_FOR_CONFIG="$PRIVATE_KEY_PATH"
+          fi
+          
           # Create SSH config file
           cat > $HOME/.ssh/config << EOF
           Host jump-server
             HostName ${{ env.SSH_JUMP_SERVER }}
             User ${{ env.SSH_JUMP_HOST }}
-            IdentityFile $PRIVATE_KEY_PATH
+            IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
             StrictHostKeyChecking no
             PreferredAuthentications publickey
           
@@ -91,7 +98,7 @@ jobs:
             HostName ${{ env.SSH_JUMP_HOST }}
             Port 2222
             User runner
-            IdentityFile $PRIVATE_KEY_PATH
+            IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
             ProxyJump jump-server
             StrictHostKeyChecking no
             PreferredAuthentications publickey
@@ -100,7 +107,7 @@ jobs:
             HostName localhost
             Port 2223
             User runner
-            IdentityFile $PRIVATE_KEY_PATH
+            IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
             StrictHostKeyChecking no
             PreferredAuthentications publickey
           EOF
