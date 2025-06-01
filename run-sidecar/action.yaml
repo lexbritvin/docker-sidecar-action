@@ -188,8 +188,8 @@ runs:
           exit 1
         fi
         
-        echo "DOCKER_HOST=$DOCKER_HOST" > sidecar-details.env
-        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" > sidecar-details.env
+        echo "DOCKER_HOST=$DOCKER_HOST" >> sidecar-details.env
+        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> sidecar-details.env
 
     - name: Forward SSHD port
       id: setup-sshd-forward

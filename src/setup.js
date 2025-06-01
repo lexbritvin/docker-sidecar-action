@@ -16,8 +16,7 @@ export async function setup() {
   // Read connection details
   const details = fs.readFileSync("sidecar-details.env", "utf8");
   const dockerHost = details.match(/DOCKER_HOST=(.*)/)[1];
-  const tlsMatch = details.match(/DOCKER_TLS_VERIFY=(.*)/);
-  const tlsVerify = tlsMatch ? tlsMatch[1] === "1" : false;
+  const tlsVerify = details.match(/DOCKER_TLS_VERIFY=(.*)/)[1] === "1";
 
   // Set Docker host
   core.exportVariable("DOCKER_HOST", dockerHost);
