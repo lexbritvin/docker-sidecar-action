@@ -75,8 +75,8 @@ jobs:
           mkdir -p ~/.ssh
           
           PRIVATE_KEY_PATH="~/.ssh/id_ed25519_tmp"
-          echo "$PRIVATE_KEY" > $PRIVATE_KEY_PATH
-          chmod 600 $PRIVATE_KEY_PATH
+          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
+          chmod 600 "$PRIVATE_KEY_PATH"
           
           # Create SSH config file
           cat > ~/.ssh/config << EOF
