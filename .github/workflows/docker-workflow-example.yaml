@@ -91,7 +91,7 @@ jobs:
           username: "runner"
           jump_hosts: ${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}
           private_key_path: ${{ steps.export-key.outputs.key_path }}
-          local_forwards: "2376:localhost:2376"
+          local_forwards: "2376:localhost:2376,2222:localhost:2223"
           ssh_flags: -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
@@ -159,15 +159,8 @@ jobs:
             --ignore "*.log" \
             --ignore "*.tmp" \
             --ignore ".DS_Store" \
-            --ssh-option "ProxyJump=${{ env.SSH_JUMP_HOST }}@${{ env.SSH_JUMP_SERVER }}" \
-            --ssh-option "Port=2222" \
-            --ssh-option "IdentityFile=${{ steps.export-key.outputs.key_path }}" \
-            --ssh-option "StrictHostKeyChecking=no" \
-            --ssh-option "PreferredAuthentications=publickey" \
-            --ssh-option "UserKnownHostsFile=/dev/null" \
-            --ssh-option "LogLevel=ERROR" \
             "$CURRENT_DIR" \
-            "runner@${{ env.SSH_JUMP_HOST }}:$CURRENT_DIR"
+            "runner@${{ env.SSH_JUMP_HOST }}:2223:$CURRENT_DIR"
           
           # Wait for initial sync
           echo "Waiting for initial sync to complete..."
