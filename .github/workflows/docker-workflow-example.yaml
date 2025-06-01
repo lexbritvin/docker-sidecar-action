@@ -145,10 +145,8 @@ jobs:
           echo "Current directory: $CURRENT_DIR"
           echo "Will sync to remote: $CURRENT_DIR"
           
-          # Create some test content to verify sync
-          echo "Test file from $RUNNER_OS runner" > test-sync.txt
-          echo "Current directory: $CURRENT_DIR" >> test-sync.txt
-          echo "Created at $(date)" >> test-sync.txt
+          echo "Adding remote host key to known_hosts"
+          ssh-keyscan -p 2223 localhost >> ~/.ssh/known_hosts 2>/dev/null || true
           
           # Create sync session preserving the exact path structure
           mutagen sync create \
