@@ -37,6 +37,12 @@ jobs:
     needs: [client-ssh-key]
     runs-on: ubuntu-latest
     steps:
+      - name: Install CIFS
+        shell: bash
+        run: |
+          sudo apt update
+          sudo apt install cifs-utils -y  # Ubuntu/Debian
+          #sudo yum install cifs-utils  # RHEL/CentOS
       - name: Run Linux Docker sidecar
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
@@ -112,89 +118,119 @@ jobs:
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action@main
 
+      - name: Create SMB user and share on Windows
+        shell: powershell
+        working-directory: ${{ env.TMP_WORKING_DIR }}
+        run: |
+          # Get current working directory for the share
+          $CURRENT_DIR = Get-Location
+          $SHARE_NAME = "workspace_share"
+          $SMB_USER = "smbuser"
+          $SMB_PASSWORD = "SecurePass123!"
+
+          # Create new local user with password on Windows
+          $SecurePassword = ConvertTo-SecureString $SMB_PASSWORD -AsPlainText -Force
+          New-LocalUser -Name $SMB_USER -Password $SecurePassword -FullName "SMB User" -Description "User for SMB sharing"
+
+          # Add user to appropriate groups for file sharing
+          Add-LocalGroupMember -Group "Users" -Member $SMB_USER
+
+          # Create SMB share on current directory
+          New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER
+
+          # Grant user permissions on the directory
+          $acl = Get-Acl $CURRENT_DIR
+          $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($SMB_USER, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+          $acl.SetAccessRule($accessRule)
+          Set-Acl $CURRENT_DIR $acl
+
+          Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
+          Write-Host "User '$SMB_USER' created and granted access"
+
       - name: Forward Docker port
         uses: lexbritvin/ssh-port-forward-action@main
         with:
           host: docker-sidecar
           local_forwards: "2376:localhost:2376"
+          remote_forwards: "1445:localhost:445"
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
-      - name: Install Mutagen
-        shell: bash
-        run: |
-          # Set Mutagen version
-          MUTAGEN_VERSION=$(curl -s https://api.github.com/repos/mutagen-io/mutagen/releases/latest | jq -r '.tag_name')
-          
-          # Detect architecture
-          case $(uname -m) in
-            x86_64) ARCH="amd64" ;;
-            arm64|aarch64) ARCH="arm64" ;;
-            *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
-          esac
-          
-          # Detect OS and binary name
-          BINARY="mutagen"
-          case "$RUNNER_OS" in
-            Windows) OS="windows" BINARY="$BINARY.exe" ;;
-            macOS) OS="darwin" ;;
-            Linux) OS="linux" ;;
-            *) echo "Unsupported OS: $RUNNER_OS"; exit 1 ;;
-          esac
-          
-          # Download, extract, and install
-          echo "Installing Mutagen..."
-          mkdir -p ~/bin
-          curl -s -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_${OS}_${ARCH}_${MUTAGEN_VERSION}.tar.gz" -o mutagen.tar.gz
-          tar -xzf mutagen.tar.gz
-          mv "$BINARY" ~/bin/
-          mv mutagen-agents.tar.gz ~/bin/mutagen-agents.tar.gz
-          rm mutagen.tar.gz
-          echo "$HOME/bin" >> $GITHUB_PATH
+#      - name: Install Mutagen
+#        shell: bash
+#        run: |
+#          # Set Mutagen version
+#          MUTAGEN_VERSION=$(curl -s https://api.github.com/repos/mutagen-io/mutagen/releases/latest | jq -r '.tag_name')
+#
+#          # Detect architecture
+#          case $(uname -m) in
+#            x86_64) ARCH="amd64" ;;
+#            arm64|aarch64) ARCH="arm64" ;;
+#            *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+#          esac
+#
+#          # Detect OS and binary name
+#          BINARY="mutagen"
+#          case "$RUNNER_OS" in
+#            Windows) OS="windows" BINARY="$BINARY.exe" ;;
+#            macOS) OS="darwin" ;;
+#            Linux) OS="linux" ;;
+#            *) echo "Unsupported OS: $RUNNER_OS"; exit 1 ;;
+#          esac
+#
+#          # Download, extract, and install
+#          echo "Installing Mutagen..."
+#          mkdir -p ~/bin
+#          curl -s -L "https://github.com/mutagen-io/mutagen/releases/download/$MUTAGEN_VERSION/mutagen_${OS}_${ARCH}_${MUTAGEN_VERSION}.tar.gz" -o mutagen.tar.gz
+#          tar -xzf mutagen.tar.gz
+#          mv "$BINARY" ~/bin/
+#          mv mutagen-agents.tar.gz ~/bin/mutagen-agents.tar.gz
+#          rm mutagen.tar.gz
+#          echo "$HOME/bin" >> $GITHUB_PATH
+#
+#          # Verify installation
+#          echo "Verifying Mutagen installation..."
+#          mutagen version
 
-          # Verify installation
-          echo "Verifying Mutagen installation..."
-          mutagen version
-
-      - name: Setup Mutagen Sync with PWD Path Preservation
-        shell: bash
-        working-directory: ${{ env.TMP_WORKING_DIR }}
-        run: |
-          REMOTE_HOST="docker-sidecar"
-          # Start Mutagen daemon
-          mutagen daemon start
-          
-          # Get current working directory
-          CURRENT_DIR=$(pwd)
-          REMOTE_DIR=$CURRENT_DIR
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            CURRENT_DIR=$(cygpath -w "$CURRENT_DIR")
-          fi
-
-          echo "Current directory: $CURRENT_DIR"
-          echo "Will sync to remote: $REMOTE_DIR"
-          
-          echo "Ensure remote directory exists and writable"
-          ssh $REMOTE_HOST "sh -c \"sudo mkdir -p $REMOTE_DIR; sudo chown \$UID $REMOTE_DIR\""
-          
-          # Create sync session preserving the exact path structure
-          mutagen sync create \
-            --name "workspace-sync" \
-            --sync-mode "two-way-resolved" \
-            --ignore ".git" \
-            --ignore "node_modules" \
-            --ignore "*.log" \
-            --ignore "*.tmp" \
-            --ignore ".DS_Store" \
-            "$CURRENT_DIR" \
-            "$REMOTE_HOST:$REMOTE_DIR"
-          
-          # Wait for initial sync
-          echo "Waiting for initial sync to complete..."
-          mutagen sync flush "workspace-sync"
-          
-          # Show sync status
-          mutagen sync list "workspace-sync" --long
+#      - name: Setup Mutagen Sync with PWD Path Preservation
+#        shell: bash
+#        working-directory: ${{ env.TMP_WORKING_DIR }}
+#        run: |
+#          REMOTE_HOST="docker-sidecar"
+#          # Start Mutagen daemon
+#          mutagen daemon start
+#
+#          # Get current working directory
+#          CURRENT_DIR=$(pwd)
+#          REMOTE_DIR=$CURRENT_DIR
+#          if [[ "$RUNNER_OS" == "Windows" ]]; then
+#            CURRENT_DIR=$(cygpath -w "$CURRENT_DIR")
+#          fi
+#
+#          echo "Current directory: $CURRENT_DIR"
+#          echo "Will sync to remote: $REMOTE_DIR"
+#
+#          echo "Ensure remote directory exists and writable"
+#          ssh $REMOTE_HOST "sh -c \"sudo mkdir -p $REMOTE_DIR; sudo chown \$UID $REMOTE_DIR\""
+#
+#          # Create sync session preserving the exact path structure
+#          mutagen sync create \
+#            --name "workspace-sync" \
+#            --sync-mode "two-way-resolved" \
+#            --ignore ".git" \
+#            --ignore "node_modules" \
+#            --ignore "*.log" \
+#            --ignore "*.tmp" \
+#            --ignore ".DS_Store" \
+#            "$CURRENT_DIR" \
+#            "$REMOTE_HOST:$REMOTE_DIR"
+#
+#          # Wait for initial sync
+#          echo "Waiting for initial sync to complete..."
+#          mutagen sync flush "workspace-sync"
+#
+#          # Show sync status
+#          mutagen sync list "workspace-sync" --long
 
 #      - name: Run Docker container - Alpine
 #        working-directory: ${{ env.TMP_WORKING_DIR }}
@@ -205,6 +241,50 @@ jobs:
 #        working-directory: ${{ env.TMP_WORKING_DIR }}
 #        run: |
 #          docker run --rm node:18-alpine node -e "console.log('Node.js version:', process.version)"
+
+      - name: Create equivalent path and mount CIFS on Linux
+        shell: bash
+        working-directory: ${{ env.TMP_WORKING_DIR }}
+        run: |
+          # Get current working directory (convert Windows path format if needed)
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            CURRENT_DIR=$(pwd)
+            MOUNT_POINT="/mnt/$(pwd)"
+          else
+            CURRENT_DIR=$(pwd)
+            MOUNT_POINT="$CURRENT_DIR"
+          fi
+          
+          SHARE_NAME="workspace_share"
+          SMB_USER="smbuser"
+          SMB_PASSWORD="SecurePass123!"
+          
+          # Create mount point on Linux
+          ssh docker-sidecar "sudo mkdir -p $MOUNT_POINT"
+          
+          # Create credentials file for CIFS mount
+          ssh docker-sidecar "sudo tee /etc/cifs-credentials > /dev/null << EOF
+          username=$SMB_USER
+          password=$SMB_PASSWORD
+          domain=WORKGROUP
+          EOF"
+          
+          # Set proper permissions on credentials file
+          ssh docker-sidecar "sudo chmod 600 /etc/cifs-credentials"
+          
+          # Mount the Windows SMB share via forwarded port
+          ssh docker-sidecar "sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0755,dir_mode=0755,nobrl"
+          
+          # Verify the mount is successful
+          ssh docker-sidecar "df -h | grep $MOUNT_POINT && ls -la $MOUNT_POINT"
+          
+          # Test file operations
+          ssh docker-sidecar "echo 'Test from Linux CIFS mount to Windows share' | sudo tee $MOUNT_POINT/linux_test.txt"
+          
+          # Also create the equivalent path structure and test access there
+          ssh docker-sidecar "ls -la $MOUNT_POINT"
+          
+          echo "CIFS mount successful! Windows share accessible at $MOUNT_POINT on Linux"
 
       - name: Run Docker container with volume mount
         shell: bash
@@ -217,7 +297,7 @@ jobs:
           echo "Hello from the host" > test-file.txt
 
           # Mount the workspace and access the file from the container
-          docker run --rm -v "$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+          docker run --rm -v "/mnt$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
 
           # Verify the file was modified
           cat test-file.txt | grep "Hello from the container"
