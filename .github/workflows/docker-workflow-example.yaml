@@ -116,7 +116,7 @@ jobs:
         uses: lexbritvin/ssh-port-forward-action@main
         with:
           host: docker-sidecar
-          local_forwards: "2376:localhost:2376,2223:localhost:2222"
+          local_forwards: "2376:localhost:2376"
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
@@ -160,6 +160,7 @@ jobs:
         shell: bash
         working-directory: ${{ env.TMP_WORKING_DIR }}
         run: |
+          REMOTE_HOST="docker-sidecar"
           # Start Mutagen daemon
           mutagen daemon start
           
@@ -173,6 +174,9 @@ jobs:
           echo "Current directory: $CURRENT_DIR"
           echo "Will sync to remote: $REMOTE_DIR"
           
+          echo "Ensure remote directory exists and writable"
+          ssh $REMOTE_HOST sh -c "sudo mkdir -p $REMOTE_DIR; sudo chown \$UID"
+          
           # Create sync session preserving the exact path structure
           mutagen sync create \
             --name "workspace-sync" \
@@ -183,14 +187,14 @@ jobs:
             --ignore "*.tmp" \
             --ignore ".DS_Store" \
             "$CURRENT_DIR" \
-            "docker-sidecar:$REMOTE_DIR"
+            "$REMOTE_HOST:$REMOTE_DIR"
           
           # Wait for initial sync
           echo "Waiting for initial sync to complete..."
-          mutagen sync monitor --name "workspace-sync" --timeout 60
+          mutagen sync flush "workspace-sync"
           
           # Show sync status
-          mutagen sync list --long
+          mutagen sync list "workspace-sync" --long
 
       - name: 🛠 Set up tmate session 🛠
         id: tmate
