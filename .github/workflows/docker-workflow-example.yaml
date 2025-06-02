@@ -139,11 +139,8 @@ jobs:
           # Create SMB share on current directory
           New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER -ChangeAccess "Everyone"
 
-          # Grant user permissions on the directory
-          #$acl = Get-Acl $CURRENT_DIR
-          #$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($SMB_USER, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-          #$acl.SetAccessRule($accessRule)
-          #Set-Acl $CURRENT_DIR $acl
+          # Grant full control using icacls
+          icacls $CURRENT_DIR /grant "${SMB_USER}:(OI)(CI)F" /T
 
           Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
           Write-Host "User '$SMB_USER' created and granted access"
@@ -278,8 +275,7 @@ jobs:
           
           echo "Test file operations"
           ssh docker-sidecar "echo 'Test from Linux CIFS mount to Windows share' | sudo tee $MOUNT_POINT/linux_test.txt"
-          
-          echo "Also create the equivalent path structure and test access there"
+          ssh docker-sidecar "sudo rm $MOUNT_POINT/linux_test.txt"
           ssh docker-sidecar "ls -la $MOUNT_POINT"
           
           echo "CIFS mount successful! Windows share accessible at $MOUNT_POINT on Linux"
