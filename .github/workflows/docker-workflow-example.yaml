@@ -139,10 +139,10 @@ jobs:
           New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER
 
           # Grant user permissions on the directory
-          $acl = Get-Acl $CURRENT_DIR
-          $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($SMB_USER, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-          $acl.SetAccessRule($accessRule)
-          Set-Acl $CURRENT_DIR $acl
+          #$acl = Get-Acl $CURRENT_DIR
+          #$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($SMB_USER, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+          #$acl.SetAccessRule($accessRule)
+          #Set-Acl $CURRENT_DIR $acl
 
           Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
           Write-Host "User '$SMB_USER' created and granted access"
