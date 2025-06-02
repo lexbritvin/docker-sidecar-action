@@ -210,8 +210,9 @@ jobs:
         shell: bash
         working-directory: ${{ env.TMP_WORKING_DIR }}
         run: |
-          # Disable conversion of windows paths.
-          MSYS_NO_PATHCONV=1
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export MSYS_NO_PATHCONV=1
+          fi
           # Create a test file in the workspace
           echo "Hello from the host" > test-file.txt
 
