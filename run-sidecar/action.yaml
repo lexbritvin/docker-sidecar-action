@@ -259,7 +259,7 @@ runs:
             echo "Job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
             
             # Check if all jobs are completed
-            if [ "${COMPLETED_JOBS:-0}" -eq "${TOTAL_JOBS:-0}" ]; then
+            if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ] && [ "$TOTAL_JOBS" -gt 0 ];  then
               echo "All jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
               
               echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"

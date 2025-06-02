@@ -247,41 +247,38 @@ jobs:
         working-directory: ${{ env.TMP_WORKING_DIR }}
         run: |
           # Get current working directory (convert Windows path format if needed)
+          CURRENT_DIR=$(pwd)
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            CURRENT_DIR=$(pwd)
-            MOUNT_POINT="/mnt/$(pwd)"
-          else
-            CURRENT_DIR=$(pwd)
-            MOUNT_POINT="$CURRENT_DIR"
+            MOUNT_POINT="/mnt/$CURRENT_DIR"
           fi
           
           SHARE_NAME="workspace_share"
           SMB_USER="smbuser"
           SMB_PASSWORD="SecurePass123!"
           
-          # Create mount point on Linux
+          echo "Create mount point on Linux"
           ssh docker-sidecar "sudo mkdir -p $MOUNT_POINT"
           
-          # Create credentials file for CIFS mount
+          echo "Create credentials file for CIFS mount"
           ssh docker-sidecar "sudo tee /etc/cifs-credentials > /dev/null << EOF
           username=$SMB_USER
           password=$SMB_PASSWORD
           domain=WORKGROUP
           EOF"
           
-          # Set proper permissions on credentials file
+          echo "Set proper permissions on credentials file"
           ssh docker-sidecar "sudo chmod 600 /etc/cifs-credentials"
           
-          # Mount the Windows SMB share via forwarded port
+          echo "Mount the Windows SMB share via forwarded port"
           ssh docker-sidecar "sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0755,dir_mode=0755,nobrl"
           
-          # Verify the mount is successful
+          echo "Verify the mount is successful"
           ssh docker-sidecar "df -h | grep $MOUNT_POINT && ls -la $MOUNT_POINT"
           
-          # Test file operations
+          echo "Test file operations"
           ssh docker-sidecar "echo 'Test from Linux CIFS mount to Windows share' | sudo tee $MOUNT_POINT/linux_test.txt"
           
-          # Also create the equivalent path structure and test access there
+          echo "Also create the equivalent path structure and test access there"
           ssh docker-sidecar "ls -la $MOUNT_POINT"
           
           echo "CIFS mount successful! Windows share accessible at $MOUNT_POINT on Linux"
