@@ -175,7 +175,7 @@ jobs:
           echo "Will sync to remote: $REMOTE_DIR"
           
           echo "Ensure remote directory exists and writable"
-          ssh $REMOTE_HOST sh -c "sudo mkdir -p $REMOTE_DIR; sudo chown \$UID"
+          ssh $REMOTE_HOST "sh -c \"sudo mkdir -p $REMOTE_DIR; sudo chown \$UID $REMOTE_DIR\""
           
           # Create sync session preserving the exact path structure
           mutagen sync create \
@@ -233,7 +233,5 @@ jobs:
         shell: bash
         run: |
           # Stop sync sessions
-          mutagen sync terminate --name "workspace-sync" || true
-          
-          # Stop daemon
+          mutagen sync terminate "workspace-sync" || true
           mutagen daemon stop || true
