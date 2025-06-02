@@ -271,7 +271,8 @@ jobs:
           
           echo "Mount the Windows SMB share via forwarded port"
           ssh docker-sidecar "sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0755,dir_mode=0755,nobrl"
-          
+          sleep 2
+
           echo "Verify the mount is successful"
           ssh docker-sidecar "df -h | grep $MOUNT_POINT && ls -la $MOUNT_POINT"
           
