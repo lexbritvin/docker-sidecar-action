@@ -134,9 +134,10 @@ jobs:
 
           # Add user to appropriate groups for file sharing
           Add-LocalGroupMember -Group "Users" -Member $SMB_USER
+          Add-LocalGroupMember -Group "Power Users" -Member $SMB_USER -ErrorAction SilentlyContinue
 
           # Create SMB share on current directory
-          New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER
+          New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER -ChangeAccess "Everyone"
 
           # Grant user permissions on the directory
           #$acl = Get-Acl $CURRENT_DIR
@@ -270,8 +271,7 @@ jobs:
           ssh docker-sidecar "sudo chmod 600 /etc/cifs-credentials"
           
           echo "Mount the Windows SMB share via forwarded port"
-          ssh docker-sidecar "sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0755,dir_mode=0755,nobrl"
-          sleep 2
+          ssh docker-sidecar "sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl"
 
           echo "Verify the mount is successful"
           ssh docker-sidecar "df -h | grep $MOUNT_POINT && ls -la $MOUNT_POINT"
