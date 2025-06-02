@@ -217,59 +217,59 @@ runs:
         path: client-certs.enc
         retention-days: 1
 
-    - name: Keep sidecar alive and monitor for shutdown signal
-      id: keep-alive
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        echo "Sidecar is running..."
-        echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
-
-        # Start time
-        START_TIME=$(date +%s)
-        TIMEOUT_SECONDS=${{ inputs.timeout }}
-        END_TIME=$((START_TIME + TIMEOUT_SECONDS))
-
-        # Keep alive loop
-        while true; do
-          CURRENT_TIME=$(date +%s)
-
-          # Check if timeout has been reached
-          if [ $CURRENT_TIME -gt $END_TIME ]; then
-            echo "Timeout reached, shutting down sidecar"
-            break
-          fi
-
-          # Check if a specific job has completed (if specified)
-          if [ -n "${{ inputs.wait-for-job }}" ]; then
-            # Get all jobs matching the matrix job name pattern
-            MATRIX_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("'"${{ inputs.wait-for-job }}"'")) | .conclusion')
-        
-            # Check if we have any matrix jobs
-            if [ -z "$MATRIX_JOBS" ]; then
-              echo "No matrix jobs found matching pattern '${{ inputs.wait-for-job }}'"
-              continue
-            fi
-            
-            # Count total matrix jobs and completed jobs
-            TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
-            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$' | wc -l || echo 0)
-            
-            echo "Job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
-            
-            # Check if all jobs are completed
-            if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ] && [ "$TOTAL_JOBS" -gt 0 ];  then
-              echo "All jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
-              
-              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
-              break
-            fi
-          fi
-
-          # Sleep for a while before checking again
-          echo "Sidecar running... (will timeout in $((END_TIME - CURRENT_TIME)) seconds)"
-          sleep 30
-        done
-
-        echo "Sidecar is shutting down"
+#    - name: Keep sidecar alive and monitor for shutdown signal
+#      id: keep-alive
+#      shell: bash
+#      env:
+#        GH_TOKEN: ${{ github.token }}
+#      run: |
+#        echo "Sidecar is running..."
+#        echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
+#
+#        # Start time
+#        START_TIME=$(date +%s)
+#        TIMEOUT_SECONDS=${{ inputs.timeout }}
+#        END_TIME=$((START_TIME + TIMEOUT_SECONDS))
+#
+#        # Keep alive loop
+#        while true; do
+#          CURRENT_TIME=$(date +%s)
+#
+#          # Check if timeout has been reached
+#          if [ $CURRENT_TIME -gt $END_TIME ]; then
+#            echo "Timeout reached, shutting down sidecar"
+#            break
+#          fi
+#
+#          # Check if a specific job has completed (if specified)
+#          if [ -n "${{ inputs.wait-for-job }}" ]; then
+#            # Get all jobs matching the matrix job name pattern
+#            MATRIX_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("'"${{ inputs.wait-for-job }}"'")) | .conclusion')
+#
+#            # Check if we have any matrix jobs
+#            if [ -z "$MATRIX_JOBS" ]; then
+#              echo "No matrix jobs found matching pattern '${{ inputs.wait-for-job }}'"
+#              continue
+#            fi
+#
+#            # Count total matrix jobs and completed jobs
+#            TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
+#            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$' | wc -l || echo 0)
+#
+#            echo "Job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
+#
+#            # Check if all jobs are completed
+#            if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ] && [ "$TOTAL_JOBS" -gt 0 ];  then
+#              echo "All jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
+#
+#              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
+#              break
+#            fi
+#          fi
+#
+#          # Sleep for a while before checking again
+#          echo "Sidecar running... (will timeout in $((END_TIME - CURRENT_TIME)) seconds)"
+#          sleep 30
+#        done
+#
+#        echo "Sidecar is shutting down"

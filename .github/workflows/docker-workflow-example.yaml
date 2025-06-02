@@ -43,6 +43,7 @@ jobs:
           sudo apt update
           sudo apt install cifs-utils -y  # Ubuntu/Debian
           #sudo yum install cifs-utils  # RHEL/CentOS
+
       - name: Run Linux Docker sidecar
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
@@ -50,7 +51,14 @@ jobs:
           jump-host: ${{ env.SSH_JUMP_SERVER }}
           jump-host-key: ${{ env.SSH_JUMP_HOST_KEY }}
           authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
-  
+
+      - name: ⚡ Wait for depending jobs
+        uses: lexbritvin/wait-for-action@main
+        with:
+          condition-type: 'job'
+          job-name: 'Windows Job'
+          timeout-minutes: 30
+
   windows-job:
     name: Windows Job
     needs: [client-ssh-key]
@@ -124,20 +132,10 @@ jobs:
         uses: lexbritvin/ssh-port-forward-action@main
         with:
           host: ${{ env.SSH_DOCKER_HOST }}
-          local_forwards: "2376:localhost:2376"
-          remote_forwards: "1445:localhost:445"
+          local_forwards: "2376:localhost:2376" # Docker tcp port.
+          remote_forwards: "1445:localhost:445" # SMB share to local directory.
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
-
-#      - name: Run Docker container - Alpine
-#        working-directory: ${{ env.TMP_WORKING_DIR }}
-#        run: |
-#          docker run --rm alpine:latest sh -c "echo 'Hello from Alpine container'; uname -a"
-#
-#      - name: Run Docker container - Node.js
-#        working-directory: ${{ env.TMP_WORKING_DIR }}
-#        run: |
-#          docker run --rm node:18-alpine node -e "console.log('Node.js version:', process.version)"
 
       - name: Create SMB user and share on Windows
         shell: powershell
@@ -184,29 +182,27 @@ jobs:
           ssh ${{ env.SSH_DOCKER_HOST }} "
             set -e
             
-            echo 'Create mount point on Linux'
+            echo 'Create mount point on Linux: $MOUNT_POINT'
             sudo mkdir -p '$MOUNT_POINT'
             
             echo 'Create credentials file for CIFS mount'
             echo 'username=$SMB_USER' | sudo tee /etc/cifs-credentials > /dev/null
             echo 'password=$SMB_PASSWORD' | sudo tee -a /etc/cifs-credentials > /dev/null
-            echo "domain=WORKGROUP" | sudo tee -a /etc/cifs-credentials > /dev/null
-            
-            echo 'Set proper permissions on credentials file'
+            echo 'domain=WORKGROUP' | sudo tee -a /etc/cifs-credentials > /dev/null
             sudo chmod 600 /etc/cifs-credentials
-            
+
             echo 'Mount the Windows SMB share via forwarded port'
             sudo mount -t cifs //localhost/$SHARE_NAME '$MOUNT_POINT' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
             
-            echo 'Verify the mount is successful'
-            df -h | grep '$MOUNT_POINT' && ls -la '$MOUNT_POINT'
+            echo 'Verify the mount is successful:'
+            df -h | grep '$MOUNT_POINT'
             
             echo 'Test file operations'
             echo 'Test from Linux CIFS mount to Windows share' | sudo tee '$MOUNT_POINT/linux_test.txt'
+            cat '$MOUNT_POINT/linux_test.txt'
             sudo rm '$MOUNT_POINT/linux_test.txt'
-            ls -la '$MOUNT_POINT'
             
-            echo 'CIFS mount successful! Windows share accessible at '$MOUNT_POINT' on Linux'
+            echo 'CIFS mount successful!'
           "
 
       - name: Run Docker container with volume mount
@@ -225,10 +221,3 @@ jobs:
           # Verify the file was modified
           cat test-file.txt | grep "Hello from the container"
           cat test-file.txt
-
-      - name: 🛠 Set up tmate session 🛠
-        id: tmate
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ failure() }}
-        with:
-          limit-access-to-actor: true
