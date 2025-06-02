@@ -206,17 +206,17 @@ jobs:
 #        run: |
 #          docker run --rm node:18-alpine node -e "console.log('Node.js version:', process.version)"
 
-# TODO: Install mutagen
-# TODO: Change GOTMPDIR
       - name: Run Docker container with volume mount
         shell: bash
         working-directory: ${{ env.TMP_WORKING_DIR }}
         run: |
           # Create a test file in the workspace
           echo "Hello from the host" > test-file.txt
+          CURRENT_DIR=$(pwd)
+          echo $CURRENT_DIR
 
           # Mount the workspace and access the file from the container
-          docker run --rm -v "$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+          docker run --rm -v "$CURRENT_DIR:/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
 
           # Verify the file was modified
           cat test-file.txt
