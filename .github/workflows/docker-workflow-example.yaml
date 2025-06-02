@@ -173,7 +173,7 @@ jobs:
           # Get current working directory (convert Windows path format if needed)
           CURRENT_DIR=$(pwd)
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-          MOUNT_POINT="/mnt$CURRENT_DIR"
+            MOUNT_POINT="/mnt$CURRENT_DIR"
           fi
           
           SHARE_NAME="workspace_share"
@@ -181,7 +181,9 @@ jobs:
           SMB_PASSWORD="SecurePass123!"
           
           # Execute all commands in a single SSH session
-          ssh ${{ env.SSH_DOCKER_HOST }} bash << 'OUTER_EOF'
+          ssh ${{ env.SSH_DOCKER_HOST }} \
+            "MOUNT_POINT='$MOUNT_POINT' SHARE_NAME='$SHARE_NAME' SMB_USER='$SMB_USER' SMB_PASSWORD='$SMB_PASSWORD'" \
+            bash << 'OUTER_EOF'
             set -e
 
             echo "Create mount point on Linux"
