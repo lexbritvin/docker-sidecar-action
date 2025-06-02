@@ -249,7 +249,7 @@ jobs:
           # Get current working directory (convert Windows path format if needed)
           CURRENT_DIR=$(pwd)
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            MOUNT_POINT="/mnt/$CURRENT_DIR"
+            MOUNT_POINT="/mnt$CURRENT_DIR"
           fi
           
           SHARE_NAME="workspace_share"
