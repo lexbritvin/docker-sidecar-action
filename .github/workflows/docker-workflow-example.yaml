@@ -181,37 +181,33 @@ jobs:
           SMB_PASSWORD="SecurePass123!"
           
           # Execute all commands in a single SSH session
-          ssh ${{ env.SSH_DOCKER_HOST }} \
-            "MOUNT_POINT='$MOUNT_POINT' SHARE_NAME='$SHARE_NAME' SMB_USER='$SMB_USER' SMB_PASSWORD='$SMB_PASSWORD'" \
-            bash << 'OUTER_EOF'
+          ssh ${{ env.SSH_DOCKER_HOST }} "
             set -e
-
-            echo "Create mount point on Linux"
-            sudo mkdir -p $MOUNT_POINT
             
-            echo "Create credentials file for CIFS mount"
-            sudo tee /etc/cifs-credentials > /dev/null << 'EOF'
-              username=$SMB_USER
-              password=$SMB_PASSWORD
-              domain=WORKGROUP
-            EOF
-              
-            echo "Set proper permissions on credentials file"
+            echo 'Create mount point on Linux'
+            sudo mkdir -p '$MOUNT_POINT'
+            
+            echo 'Create credentials file for CIFS mount'
+            echo 'username=$SMB_USER' | sudo tee /etc/cifs-credentials > /dev/null
+            echo 'password=$SMB_PASSWORD' | sudo tee -a /etc/cifs-credentials > /dev/null
+            echo "domain=WORKGROUP" | sudo tee -a /etc/cifs-credentials > /dev/null
+            
+            echo 'Set proper permissions on credentials file'
             sudo chmod 600 /etc/cifs-credentials
             
-            echo "Mount the Windows SMB share via forwarded port"
-            sudo mount -t cifs //localhost/$SHARE_NAME $MOUNT_POINT -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+            echo 'Mount the Windows SMB share via forwarded port'
+            sudo mount -t cifs //localhost/$SHARE_NAME '$MOUNT_POINT' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
             
-            echo "Verify the mount is successful"
-            df -h | grep $MOUNT_POINT && ls -la $MOUNT_POINT
+            echo 'Verify the mount is successful'
+            df -h | grep '$MOUNT_POINT' && ls -la '$MOUNT_POINT'
             
-            echo "Test file operations"
-            echo "Test from Linux CIFS mount to Windows share" | sudo tee $MOUNT_POINT/linux_test.txt
-            sudo rm $MOUNT_POINT/linux_test.txt
-            ls -la $MOUNT_POINT
+            echo 'Test file operations'
+            echo 'Test from Linux CIFS mount to Windows share' | sudo tee '$MOUNT_POINT/linux_test.txt'
+            sudo rm '$MOUNT_POINT/linux_test.txt'
+            ls -la '$MOUNT_POINT'
             
-            echo "CIFS mount successful! Windows share accessible at $MOUNT_POINT on Linux"
-          OUTER_EOF
+            echo 'CIFS mount successful! Windows share accessible at '$MOUNT_POINT' on Linux'
+          "
 
       - name: Run Docker container with volume mount
         shell: bash
