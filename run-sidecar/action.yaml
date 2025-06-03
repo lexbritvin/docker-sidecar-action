@@ -114,6 +114,7 @@ runs:
         # Configure server certificate extensions
         CERT_DOMAINS="$(echo "${{ inputs.tls-certificate-domains }}" | sed 's/,/,DNS:/g' | sed 's/^/DNS:/')"
         cat > docker-tls/server/extensions.cnf <<EOF
+        [v3_req]
         subjectAltName = ${CERT_DOMAINS},IP:127.0.0.1,IP:0.0.0.0
         extendedKeyUsage = serverAuth
         keyUsage = digitalSignature,keyEncipherment
@@ -137,6 +138,7 @@ runs:
         
         # Configure client certificate extensions
         cat > docker-tls/client/extensions.cnf <<EOF
+        [v3_req]
         extendedKeyUsage = clientAuth
         keyUsage = digitalSignature,keyEncipherment
         EOF
