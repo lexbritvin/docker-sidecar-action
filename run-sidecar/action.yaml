@@ -172,23 +172,23 @@ runs:
         # Prepare Docker daemon configuration
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-        {
-          "tls": true,
-          "tlsverify": true,
-          "tlscacert": "$(pwd)/docker-tls/ca-certificate.pem",
-          "tlscert": "$(pwd)/docker-tls/server/certificate.pem",
-          "tlskey": "$(pwd)/docker-tls/server/private-key.pem",
-          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
-        }
-        EOF
+          {
+            "tls": true,
+            "tlsverify": true,
+            "tlscacert": "$(pwd)/docker-tls/ca-certificate.pem",
+            "tlscert": "$(pwd)/docker-tls/server/certificate.pem",
+            "tlskey": "$(pwd)/docker-tls/server/private-key.pem",
+            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
+          }
+          EOF
           DOCKER_PORT=2376
           TLS_ENABLED=1
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-        {
-          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"],
-        }
-        EOF
+          {
+            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"],
+          }
+          EOF
           DOCKER_PORT=2375
           TLS_ENABLED=""
         fi
