@@ -220,7 +220,7 @@ runs:
         # Wait for Docker daemon with timeout
         RETRY_COUNT=0
         MAX_RETRIES=30
-        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        while [ $RETRY_COUNT -le $MAX_RETRIES ]; do
           if docker version > /dev/null 2>&1; then
             echo "✅ Docker daemon is responding successfully"
             docker version
