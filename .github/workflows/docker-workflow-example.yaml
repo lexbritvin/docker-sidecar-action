@@ -37,34 +37,25 @@ jobs:
     needs: [client-ssh-key]
     runs-on: ubuntu-latest
     steps:
-      - name: Install CIFS
-        shell: bash
-        run: |
-          sudo apt update
-          sudo apt install cifs-utils -y  # Ubuntu/Debian
-          #sudo yum install cifs-utils  # RHEL/CentOS
-
       - name: Run Linux Docker sidecar
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
-          wait-for-job: "Windows Job"
-          jump-host: ${{ env.SSH_JUMP_SERVER }}
-          jump-host-key: ${{ env.SSH_JUMP_HOST_KEY }}
-          authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
+          ssh-jump-host: ${{ env.SSH_JUMP_SERVER }}
+          ssh-jump-host-key: ${{ env.SSH_JUMP_HOST_KEY }}
+          ssh-authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
 
-      - name: ⚡ Wait for depending jobs
+      - name: ⚡ Wait for related jobs
         uses: lexbritvin/wait-for-action@main
         with:
           condition-type: 'job'
           job-name: 'Windows Job'
           timeout-minutes: 30
+          poll-interval-seconds: 30
 
   windows-job:
     name: Windows Job
     needs: [client-ssh-key]
     runs-on: windows-latest
-    env:
-      SSH_JUMP_HOST: gh-linux-sidecar-${{ github.run_id }}-sidecar
     steps:
       - name: Create run subdir
         shell: bash
@@ -81,6 +72,7 @@ jobs:
           path: ${{ env.TMP_WORKING_DIR }}
 
       - name: Setup SSH Config
+        id: ssh-config
         shell: bash
         env:
           PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
@@ -89,6 +81,7 @@ jobs:
           mkdir -p $HOME/.ssh
           
           PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
+          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
           
@@ -126,13 +119,14 @@ jobs:
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
-        uses: lexbritvin/docker-sidecar-action@main
+        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
+        with:
+          private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
 
       - name: Forward Docker port
         uses: lexbritvin/ssh-port-forward-action@main
         with:
           host: ${{ env.SSH_DOCKER_HOST }}
-          local_forwards: "2376:localhost:2376" # Docker tcp port.
           remote_forwards: "1445:localhost:445" # SMB share to local directory.
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}

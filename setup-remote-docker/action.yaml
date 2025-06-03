@@ -1,0 +1,158 @@
+name: 'Setup Remote Docker'
+description: 'Set up a Linux remote Docker for Windows and macOS runners'
+
+inputs:
+  docker-connection-artifact-name:
+    description: 'Name of the Docker connection artifacts to download'
+    default: 'docker-conn-details'
+    required: false
+  private-key-path:
+    description: 'Path to the SSH private key file for sidecar ssh authentication'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Wait for Docker sidecar to start
+      uses: lexbritvin/wait-for-action@main
+      with:
+        condition-type: 'artifact'
+        artifact-name: ${{ inputs.docker-connection-artifact-name }}
+        timeout-seconds: 300
+
+    - name: Download Docker connection artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.docker-connection-artifact-name }}
+        path: ${{ inputs.docker-connection-artifact-name }}
+
+    - name: Load connection details
+      id: connection
+      shell: bash
+      run: |
+        echo "::group::Loading connection details"
+        
+        # Check for connection files
+        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env" ]]; then
+          echo "::error::Docker connection details not found in artifacts"
+          exit 1
+        fi
+        
+        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env" ]]; then
+          echo "::error::SSH connection details not found in artifacts"
+          exit 1
+        fi
+        
+        # Load and export connection details
+        echo "Loading Docker connection configuration..."
+        source "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env"
+        
+        echo "Loading SSH connection configuration..."
+        source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
+        
+        # Set outputs for SSH tunnel configuration
+        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
+        echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
+        echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
+        echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
+        echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
+        echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
+        
+        # Set Docker environment variables
+        echo "DOCKER_HOST=$DOCKER_HOST" >> $GITHUB_ENV
+        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> $GITHUB_ENV
+        
+        echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
+        
+        echo "::notice::Docker host configured: $DOCKER_HOST"
+        echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
+        echo "::notice::SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
+        
+        echo "::endgroup::"
+
+    - name: Setup Docker TLS certificates
+      shell: bash
+      run: |
+        # Return early if TLS is not enabled
+        if [[ "${DOCKER_TLS_VERIFY}" != "1" ]]; then
+          echo "::notice::TLS verification disabled, skipping certificate setup"
+          exit 0
+        fi
+        
+        echo "::group::Setting up Docker TLS certificates"
+        
+        # Check if TLS certificates exist
+        if [[ ! -d "${{ inputs.docker-connection-artifact-name }}/tls-certificates" ]]; then
+          echo "::error::TLS certificates directory not found in artifacts"
+          exit 1
+        fi
+        
+        # Create Docker certificates directory
+        mkdir -p docker-certs
+        cp "${{ inputs.docker-connection-artifact-name }}/tls-certificates"/* docker-certs/
+        
+        # Set certificate path with OS compatibility
+        cert_path="${PWD}/docker-certs"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          # Convert Unix path to Windows path format for Git Bash/MSYS2
+          cert_path=$(cygpath -w "$cert_path" 2>/dev/null || echo "$cert_path")
+        fi
+        
+        echo "DOCKER_CERT_PATH=${cert_path}" >> $GITHUB_ENV
+        
+        # Verify certificate files exist
+        required_files=("ca.pem" "certificate.pem" "private-key.pem")
+        for file in "${required_files[@]}"; do
+          if [[ ! -f "docker-certs/${file}" ]]; then
+            echo "::error::Required certificate file missing: ${file}"
+            exit 1
+          fi
+        done
+        
+        echo "::notice::Docker TLS certificates configured: ${cert_path}"
+        echo "::endgroup::"
+
+    - name: Forward Docker port
+      uses: lexbritvin/ssh-port-forward-action@main
+      with:
+        host: ${{ steps.connection.outputs.ssh_host }}
+        port: ${{ steps.connection.outputs.ssh_port }}
+        username: ${{ steps.connection.outputs.ssh_user }}
+        private_key_path: ${{ inputs.private-key-path }}
+        jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
+        local_forwards: "${{ steps.connection.outputs.docker_endpoint }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
+        ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+    - name: Verify Docker connection
+      shell: bash
+      run: |
+        echo "::group::Verifying Docker connection"
+        
+        # Display environment variables (without sensitive data)
+        echo "Docker Environment:"
+        echo "  DOCKER_HOST: ${DOCKER_HOST:-not set}"
+        echo "  DOCKER_TLS_VERIFY: ${DOCKER_TLS_VERIFY:-not set}"
+        echo "  DOCKER_CERT_PATH: ${DOCKER_CERT_PATH:-not set}"
+        
+        # Test Docker connection
+        echo "Testing Docker connection..."
+        if docker version > /dev/null 2>&1; then
+          echo "✅ Docker connection successful"
+          docker version --format 'Client: {{.Client.Version}}, Server: {{.Server.Version}}'
+        else
+          echo "::error::Failed to connect to Docker daemon"
+          echo "::error::Please check that the Docker sidecar is running and accessible"
+          exit 1
+        fi
+        
+        echo "::endgroup::"
+        echo "::notice::Remote Docker setup completed successfully"
+
+    - name: Cleanup temporary files
+      shell: bash
+      run: |
+        # Clean up downloaded artifacts (keep docker-certs for use)
+        rm -rf "${{ inputs.docker-connection-artifact-name }}"
+        
+        echo "::notice::Temporary files cleaned up"

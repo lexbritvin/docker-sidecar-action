@@ -1,275 +1,311 @@
-name: 'Docker Sidecar - Run Docker'
-description: 'Starts a Linux sidecar with exposed Docker Host'
+name: 'Secure Docker Remote Access'
+description: 'Sets up secure remote Docker daemon access through SSH tunneling with TLS authentication'
 author: 'Aleksandr Britvin'
 
 inputs:
-  wait-for-job:
+  ssh-jump-host:
     required: true
-    default: ''
-    description: 'Name of the job to wait for completion before shutting down the sidecar'
-  jump-host:
+    description: 'SSH jump host server for tunneling Docker daemon access'
+  ssh-host-key:
     required: true
-    default: ''
-    description: 'Jump host server to expose ssh server port'
-  jump-host-key:
+    description: 'SSH host key for jump server verification (known_hosts format)'
+  ssh-authorized-keys:
     required: true
-    default: ''
-    description: 'Jump host server key to verify'
-  authorized-keys:
-    required: true
-    default: ''
-    description: 'Authorized keys to connect to SSH server for port forwarding'
-  timeout:
+    description: 'SSH public keys authorized for remote access'
+  connection-timeout:
     required: false
     default: '3600'
-    description: 'Maximum time in seconds to keep sidecar alive'
-  tls-verify:
+    description: 'Maximum connection lifetime in seconds'
+  enable-tls:
     required: false
     default: 'true'
-    description: 'Enable TLS verification for Docker daemon'
-  certificate-domains:
-    description: 'Comma separated allowed domains for the result certificates'
+    description: 'Enable TLS encryption for Docker daemon communication'
+  tls-certificate-domains:
+    description: 'Comma-separated list of domains for TLS certificates'
     default: 'localhost'
     required: false
-  certificates-encryption-key:
-    description: 'Key to encrypt certificates before uploading'
-    default: ''
+  docker-connection-artifact-name:
+    description: 'Name for the Docker connection artifacts'
+    default: 'docker-conn-details'
     required: false
 
 runs:
   using: "composite"
   steps:
-    - name: Verify Linux environment
+    - name: Validate Linux environment
       shell: bash
       run: |
         if [[ "$RUNNER_OS" != "Linux" ]]; then
-          echo "This action requires a Linux runner."
+          echo "::error::This action requires a Linux runner environment"
           exit 1
         fi
 
-        if [[ -z "${{ inputs.wait-for-job }}" ]]; then
-          echo "wait-for-job input is required."
-          exit 1
-        fi
-
-    - name: Setup SSH server
-      id: setup-sshd
+    - name: Configure SSH daemon
+      id: configure-ssh
       uses: lexbritvin/setup-sshd-action@main
       with:
-        authorized-keys: ${{ inputs.authorized-keys }}
+        authorized-keys: ${{ inputs.ssh-authorized-keys }}
 
-    - name: Generate TLS certificates for Docker
-      id: generate-certs
+    - name: Install network file system utilities
       shell: bash
-      if: ${{ inputs.tls-verify == 'true' }}
       run: |
-        # Create directories for Docker certs
-        mkdir -p docker-certs/client
+        echo "Checking CIFS utilities installation..."
         
-        # Generate CA certificate
-        openssl genrsa -out docker-certs/ca-key.pem 4096
-        openssl req -new -x509 -days 365 -key docker-certs/ca-key.pem -sha256 \
-          -out docker-certs/ca.pem -subj "/CN=docker-ca"
+        # Check if cifs-utils is already installed
+        if command -v mount.cifs &> /dev/null; then
+          echo "✅ CIFS utilities already installed"
+          exit 0
+        fi
         
-        # Generate server certificate
-        openssl genrsa -out docker-certs/server-key.pem 4096
-        openssl req -subj "/CN=docker-server" -sha256 -new \
-          -key docker-certs/server-key.pem -out docker-certs/server.csr
+        echo "Installing CIFS utilities for network file system support..."
         
-        # Configure server certificate domains
-        CERTIFICATE_DOMAINS="$(echo "${{ inputs.certificate-domains }}" | sed 's/,/,DNS:/g' | sed 's/^/DNS:/')"
-        echo "subjectAltName = ${CERTIFICATE_DOMAINS},IP:127.0.0.1" > docker-certs/extfile.cnf
-        echo "extendedKeyUsage = serverAuth" >> docker-certs/extfile.cnf
+        # Detect Linux distribution and install
+        if command -v apt-get &> /dev/null; then
+          # Debian/Ubuntu family
+          echo "Detected Debian/Ubuntu system"
+          sudo apt-get update
+          sudo apt-get install -y cifs-utils
+        elif command -v yum &> /dev/null; then
+          # RHEL/CentOS/Fedora (older)
+          echo "Detected RHEL/CentOS system"
+          sudo yum install -y cifs-utils
+        elif command -v dnf &> /dev/null; then
+          # Fedora/RHEL 8+ 
+          echo "Detected Fedora/RHEL 8+ system"
+          sudo dnf install -y cifs-utils
+        elif command -v zypper &> /dev/null; then
+          # openSUSE/SLES
+          echo "Detected openSUSE/SLES system"
+          sudo zypper install -y cifs-utils
+        elif command -v pacman &> /dev/null; then
+          # Arch Linux
+          echo "Detected Arch Linux system"
+          sudo pacman -S --noconfirm cifs-utils
+        elif command -v apk &> /dev/null; then
+          # Alpine Linux
+          echo "Detected Alpine Linux system"
+          sudo apk add --no-cache cifs-utils
+        else
+          echo "::warning::Unable to detect package manager. Please install cifs-utils manually if needed."
+        fi
+
+    - name: Generate Docker TLS certificates
+      id: generate-tls-certs
+      shell: bash
+      if: ${{ inputs.enable-tls == 'true' }}
+      run: |
+        echo "Generating TLS certificates for secure Docker communication..."
+        
+        # Create certificate directories
+        mkdir -p docker-tls/{server,client}
+        
+        # Generate Certificate Authority
+        openssl genrsa -out docker-tls/ca-private-key.pem 4096
+        openssl req -new -x509 -days 365 -key docker-tls/ca-private-key.pem -sha256 \
+          -out docker-tls/ca-certificate.pem \
+          -subj "/C=US/ST=Docker/L=Daemon/O=Docker/OU=CA/CN=Docker CA"
+        
+        # Generate server private key and certificate request
+        openssl genrsa -out docker-tls/server/private-key.pem 4096
+        openssl req -subj "/C=US/ST=Docker/L=Daemon/O=Docker/OU=Server/CN=docker-daemon" \
+          -sha256 -new -key docker-tls/server/private-key.pem \
+          -out docker-tls/server/certificate-request.csr
+        
+        # Configure server certificate extensions
+        CERT_DOMAINS="$(echo "${{ inputs.tls-certificate-domains }}" | sed 's/,/,DNS:/g' | sed 's/^/DNS:/')"
+        cat > docker-tls/server/extensions.cnf <<EOF
+        subjectAltName = ${CERT_DOMAINS},IP:127.0.0.1,IP:0.0.0.0
+        extendedKeyUsage = serverAuth
+        keyUsage = digitalSignature,keyEncipherment
+        EOF
         
         # Sign server certificate
         openssl x509 -req -days 365 -sha256 \
-          -in docker-certs/server.csr \
-          -CA docker-certs/ca.pem \
-          -CAkey docker-certs/ca-key.pem \
+          -in docker-tls/server/certificate-request.csr \
+          -CA docker-tls/ca-certificate.pem \
+          -CAkey docker-tls/ca-private-key.pem \
           -CAcreateserial \
-          -out docker-certs/server-cert.pem \
-          -extfile docker-certs/extfile.cnf
+          -out docker-tls/server/certificate.pem \
+          -extensions v3_req \
+          -extfile docker-tls/server/extensions.cnf
         
-        # Generate client certificate
-        openssl genrsa -out docker-certs/client/key.pem 4096
-        openssl req -subj '/CN=docker-client' -new \
-          -key docker-certs/client/key.pem \
-          -out docker-certs/client.csr
+        # Generate client private key and certificate request
+        openssl genrsa -out docker-tls/client/private-key.pem 4096
+        openssl req -subj "/C=US/ST=Docker/L=Client/O=Docker/OU=Client/CN=docker-client" \
+          -new -key docker-tls/client/private-key.pem \
+          -out docker-tls/client/certificate-request.csr
         
-        # Configure client certificate
-        echo "extendedKeyUsage = clientAuth" > docker-certs/client-extfile.cnf
+        # Configure client certificate extensions
+        cat > docker-tls/client/extensions.cnf <<EOF
+        extendedKeyUsage = clientAuth
+        keyUsage = digitalSignature,keyEncipherment
+        EOF
         
         # Sign client certificate
         openssl x509 -req -days 365 -sha256 \
-          -in docker-certs/client.csr \
-          -CA docker-certs/ca.pem \
-          -CAkey docker-certs/ca-key.pem \
+          -in docker-tls/client/certificate-request.csr \
+          -CA docker-tls/ca-certificate.pem \
+          -CAkey docker-tls/ca-private-key.pem \
           -CAcreateserial \
-          -out docker-certs/client/cert.pem \
-          -extfile docker-certs/client-extfile.cnf
+          -out docker-tls/client/certificate.pem \
+          -extensions v3_req \
+          -extfile docker-tls/client/extensions.cnf
         
-        # Copy CA cert for client
-        cp docker-certs/ca.pem docker-certs/client/ca.pem
+        # Copy CA certificate for client
+        cp docker-tls/ca-certificate.pem docker-tls/client/ca.pem
         
-        # Set proper permissions
-        chmod 0400 docker-certs/ca-key.pem docker-certs/server-key.pem docker-certs/client/key.pem
-        chmod 0444 docker-certs/ca.pem docker-certs/server-cert.pem docker-certs/client/cert.pem
+        # Set secure permissions
+        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/private-key.pem
+        chmod 0444 docker-tls/ca-certificate.pem docker-tls/server/certificate.pem docker-tls/client/certificate.pem
         
-        # Create artifact with client certificates
-        mkdir -p client-certs
-        cp -r docker-certs/client/* client-certs/
-        tar -C client-certs -cf client-certs.tar .
+        # Cleanup temporary files
+        rm -rf docker-tls/*/certificate-request.csr docker-tls/*/extensions.cnf
 
-        openssl enc -aes-256-cbc -in client-certs.tar -out client-certs.enc -k "${{ inputs.certificates-encryption-key }}" -pbkdf2
-        rm -rf client-certs/ client-certs.tar
-
-    - name: Start Docker daemon
-      id: start-docker
+    - name: Configure and start Docker daemon
+      id: configure-docker
       shell: bash
       run: |
-        # Configure Docker daemon
-        echo "Configuring Docker daemon..."
-        if [[ "${{ inputs.tls-verify }}" == "true" ]]; then
+        echo "Configuring Docker daemon for remote access..."
+        
+        # Prepare Docker daemon configuration
+        if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-          {
-            "tls": true,
-            "tlsverify": true,
-            "tlscacert": "$(pwd)/docker-certs/ca.pem",
-            "tlscert": "$(pwd)/docker-certs/server-cert.pem",
-            "tlskey": "$(pwd)/docker-certs/server-key.pem",
-            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-          }
+        {
+          "tls": true,
+          "tlsverify": true,
+          "tlscacert": "$(pwd)/docker-tls/ca-certificate.pem",
+          "tlscert": "$(pwd)/docker-tls/server/certificate.pem",
+          "tlskey": "$(pwd)/docker-tls/server/private-key.pem",
+          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
+        }
         EOF
+          DOCKER_PORT=2376
+          TLS_ENABLED=1
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-          {
-            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-          }
+        {
+          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"],
+        }
         EOF
+          DOCKER_PORT=2375
+          TLS_ENABLED=""
         fi
         
+        echo "Docker daemon configuration:"
         cat /etc/docker/daemon.json
-      
-        # Create systemd override directory
+        
+        # Configure systemd service override
         sudo mkdir -p /etc/systemd/system/docker.service.d/
-      
-        # Configure systemd to use the daemon.json
         sudo tee /etc/systemd/system/docker.service.d/override.conf > /dev/null <<EOF
         [Service]
         ExecStart=
         ExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock
         EOF
-      
-        # Reload systemd and restart Docker
-        echo "Restarting Docker daemon..."
+        
+        # Restart Docker service
+        echo "Restarting Docker daemon with new configuration..."
         sudo systemctl daemon-reload
         sudo systemctl restart docker
         
-        # Wait for Docker daemon to start
-        echo "Waiting for Docker daemon to become available..."
-        export DOCKER_HOST=tcp://localhost:2376
-        export DOCKER_TLS_VERIFY=${{ inputs.tls-verify == 'true' && '1' || '' }}
-        export DOCKER_CERT_PATH=${{ inputs.tls-verify == 'true' && '$(pwd)/docker-certs/client' || '' }}
+        # Verify Docker daemon startup
+        echo "Verifying Docker daemon connectivity..."
+        export DOCKER_HOST="tcp://localhost:${DOCKER_PORT}"
+        export DOCKER_TLS_VERIFY="${TLS_ENABLED}"
+        if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
+          export DOCKER_CERT_PATH="$(pwd)/docker-tls/client"
+        fi
         
-        MAX_ATTEMPTS=30
-        ATTEMPT=0
-        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-          ATTEMPT=$((ATTEMPT+1))
-          if docker info > /dev/null 2>&1; then
-            echo "Docker daemon started successfully"
+        # Wait for Docker daemon with timeout
+        RETRY_COUNT=0
+        MAX_RETRIES=30
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          if docker version > /dev/null 2>&1; then
+            echo "✅ Docker daemon is responding successfully"
+            docker version
             break
           fi
-          echo "Waiting for Docker daemon (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+          echo "⏳ Waiting for Docker daemon (attempt ${RETRY_COUNT}/${MAX_RETRIES})..."
           sleep 2
         done
         
-        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-          echo "::error::Timed out waiting for Docker daemon to start"
+        if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+          echo "::error::Docker daemon failed to start within timeout period"
+          sudo journalctl -u docker --no-pager --lines=20
           exit 1
         fi
         
-        echo "DOCKER_HOST=$DOCKER_HOST" >> sidecar-details.env
-        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> sidecar-details.env
+        # Save connection details
+        cat > docker-connection-details.env <<EOF
+        DOCKER_HOST=${DOCKER_HOST}
+        DOCKER_TLS_VERIFY=${TLS_ENABLED}
+        DOCKER_PORT=${DOCKER_PORT}
+        EOF
 
-    - name: Forward SSHD port
-      id: setup-sshd-forward
+    - name: Prepare SSH connection details
+      id: ssh
+      shell: bash
+      run: |
+        # Get SSH daemon details from configure-ssh step
+        SSH_HOST=${{ steps.configure-ssh.outputs.host }}
+        SSH_PORT=${{ steps.configure-ssh.outputs.port }}
+        SSH_USER=${{ steps.configure-ssh.outputs.username }}
+        SSH_JUMP_HOST=${{ inputs.ssh-jump-host }}
+        SSH_JUMP_PORT=2222
+        SSH_JUMP_USER="gh-runner-${{ github.job }}-${{ github.run_id }}"
+
+        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
+        echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
+        echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
+        echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
+        echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
+        echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
+        
+        # Create SSH connection details
+        cat > ssh-connection-details.env <<EOF
+        SSH_HOST=$SSH_HOST
+        SSH_PORT=$SSH_PORT
+        SSH_USER=$SSH_USER
+        SSH_JUMP_HOST=$SSH_JUMP_HOST
+        SSH_JUMP_PORT=$SSH_JUMP_PORT
+        SSH_JUMP_USER=$SSH_JUMP_USER
+        EOF
+        
+        echo "SSH connection details exported:"
+        cat ssh-connection-details.env
+
+    - name: Establish SSH tunnel
+      id: establish-tunnel
       uses: lexbritvin/ssh-port-forward-action@main
       with:
-        host: ${{ inputs.jump-host }}
-        username: "gh-${{ github.job }}-${{ github.run_id }}-sidecar"
-        remote_forwards: "gh-${{ github.job }}-${{ github.run_id }}-sidecar:2222:localhost:2222"
-        known_hosts: |
-          ${{ inputs.jump-host-key }}
+        host: ${{ steps.ssh.outputs.ssh_jump_host }}
+        username: ${{ steps.ssh.outputs.ssh_jump_user }}
+        remote_forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_jump_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
+        known_hosts: ${{ inputs.ssh-host-key }}
 
-    # TODO: Update connection details with host, username, etc.
-    - name: Upload sidecar connection details
+    - name: Prepare connection artifacts
+      shell: bash
+      run: |
+        echo "Preparing connection artifacts..."
+        
+        # Create connection bundle directory
+        mkdir -p "${{ inputs.docker-connection-artifact-name }}"
+        
+        # Add connection configuration files
+        cp docker-connection-details.env "${{ inputs.docker-connection-artifact-name }}/"
+        cp ssh-connection-details.env "${{ inputs.docker-connection-artifact-name }}/"
+        
+        # Add TLS certificates if enabled
+        if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
+          mkdir -p "${{ inputs.docker-connection-artifact-name }}/tls-certificates"
+          cp docker-tls/client/{ca.pem,certificate.pem,private-key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
+        fi
+        
+        echo "✅ Connection artifacts prepared successfully"
+
+    - name: Upload connection artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: sidecar-details
-        path: sidecar-details.env
+        name: ${{ inputs.docker-connection-artifact-name }}
+        path: ${{ inputs.docker-connection-artifact-name }}/
         retention-days: 1
-
-    - name: Upload Docker client certificates
-      uses: actions/upload-artifact@v4
-      if: ${{ inputs.tls-verify == 'true' }}
-      with:
-        name: docker-certs
-        path: client-certs.enc
-        retention-days: 1
-
-#    - name: Keep sidecar alive and monitor for shutdown signal
-#      id: keep-alive
-#      shell: bash
-#      env:
-#        GH_TOKEN: ${{ github.token }}
-#      run: |
-#        echo "Sidecar is running..."
-#        echo "Waiting for shutdown signal or timeout (${{ inputs.timeout }} seconds)..."
-#
-#        # Start time
-#        START_TIME=$(date +%s)
-#        TIMEOUT_SECONDS=${{ inputs.timeout }}
-#        END_TIME=$((START_TIME + TIMEOUT_SECONDS))
-#
-#        # Keep alive loop
-#        while true; do
-#          CURRENT_TIME=$(date +%s)
-#
-#          # Check if timeout has been reached
-#          if [ $CURRENT_TIME -gt $END_TIME ]; then
-#            echo "Timeout reached, shutting down sidecar"
-#            break
-#          fi
-#
-#          # Check if a specific job has completed (if specified)
-#          if [ -n "${{ inputs.wait-for-job }}" ]; then
-#            # Get all jobs matching the matrix job name pattern
-#            MATRIX_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("'"${{ inputs.wait-for-job }}"'")) | .conclusion')
-#
-#            # Check if we have any matrix jobs
-#            if [ -z "$MATRIX_JOBS" ]; then
-#              echo "No matrix jobs found matching pattern '${{ inputs.wait-for-job }}'"
-#              continue
-#            fi
-#
-#            # Count total matrix jobs and completed jobs
-#            TOTAL_JOBS=$(echo "$MATRIX_JOBS" | wc -l)
-#            COMPLETED_JOBS=$(echo "$MATRIX_JOBS" | grep -E '^(success|failure|cancelled)$' | wc -l || echo 0)
-#
-#            echo "Job progress: $COMPLETED_JOBS/$TOTAL_JOBS completed"
-#
-#            # Check if all jobs are completed
-#            if [ "$COMPLETED_JOBS" -eq "$TOTAL_JOBS" ] && [ "$TOTAL_JOBS" -gt 0 ];  then
-#              echo "All jobs for '${{ inputs.wait-for-job }}' have completed, terminating sidecar"
-#
-#              echo "Results: $SUCCESS_COUNT succeeded, $FAILURE_COUNT failed, $CANCELLED_COUNT cancelled"
-#              break
-#            fi
-#          fi
-#
-#          # Sleep for a while before checking again
-#          echo "Sidecar running... (will timeout in $((END_TIME - CURRENT_TIME)) seconds)"
-#          sleep 30
-#        done
-#
-#        echo "Sidecar is shutting down"
