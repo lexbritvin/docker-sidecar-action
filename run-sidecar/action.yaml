@@ -161,7 +161,7 @@ runs:
         cp docker-tls/ca-certificate.pem docker-tls/client/ca.pem
         
         # Set secure permissions
-        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/private-key.pem
+        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/key.pem
         chmod 0444 docker-tls/ca-certificate.pem docker-tls/server/certificate.pem docker-tls/client/certificate.pem
         
         # Cleanup temporary files
@@ -190,13 +190,11 @@ runs:
           
           # Prepare client certificates with correct naming for Docker client
           mkdir -p docker-client-certs
-          cp docker-tls/client/ca.pem docker-client-certs/ca.pem
-          cp docker-tls/client/certificate.pem docker-client-certs/cert.pem
-          cp docker-tls/client/private-key.pem docker-client-certs/key.pem
+          cp docker-tls/client/{ca,certificate,key}.pem docker-client-certs/
           
           # Set correct permissions for client certificates
           chmod 0400 docker-client-certs/key.pem
-          chmod 0444 docker-client-certs/{ca.pem,cert.pem}
+          chmod 0444 docker-client-certs/{ca.pem,certificate.pem}
           
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
@@ -323,7 +321,7 @@ runs:
         # Add TLS certificates if enabled
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           mkdir -p "${{ inputs.docker-connection-artifact-name }}/tls-certificates"
-          cp docker-client-certs/{ca.pem,cert.pem,key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
+          cp docker-client-certs/{ca.pem,certificate.pem,key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
         fi
         
         echo "✅ Connection artifacts prepared successfully"
