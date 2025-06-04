@@ -123,7 +123,7 @@ jobs:
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
-          private_key_path: ${{ steps.ssh-config.outputs.private-key-path }}
+          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
