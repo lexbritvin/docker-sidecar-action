@@ -97,8 +97,6 @@ runs:
         mkdir -p docker-certs
         cp "${{ inputs.docker-connection-artifact-name }}/tls-certificates"/* docker-certs/
         
-        ls -al docker-certs/
-        
         # Set certificate path with OS compatibility
         cert_path="${PWD}/docker-certs"
         if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -109,7 +107,7 @@ runs:
         echo "DOCKER_CERT_PATH=${cert_path}" >> $GITHUB_ENV
         
         # Verify certificate files exist
-        required_files=("ca.pem" "certificate.pem" "private-key.pem")
+        required_files=("ca.pem" "cert.pem" "key.pem")
         for file in "${required_files[@]}"; do
           if [[ ! -f "docker-certs/${file}" ]]; then
             echo "::error::Required certificate file missing: ${file}"
