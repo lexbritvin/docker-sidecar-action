@@ -272,7 +272,7 @@ runs:
         SSH_PORT=${{ steps.configure-ssh.outputs.port }}
         SSH_USER=${{ steps.configure-ssh.outputs.username }}
         SSH_JUMP_HOST=${{ inputs.ssh-jump-host }}
-        SSH_JUMP_PORT=2222
+        SSH_JUMP_PORT=22
         SSH_JUMP_USER="gh-runner-${{ github.job }}-${{ github.run_id }}"
 
         echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
