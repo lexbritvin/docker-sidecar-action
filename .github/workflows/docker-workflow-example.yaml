@@ -48,28 +48,17 @@ jobs:
         uses: lexbritvin/wait-for-action@main
         with:
           condition-type: 'job'
-          job-name: 'Windows Job'
+          job-name: '[wait] '
           timeout-seconds: 1800
           poll-interval-seconds: 30
 
   windows-job:
-    name: Windows Job
+    name: [wait] Windows Job
     needs: [client-ssh-key]
     runs-on: windows-latest
     steps:
-      - name: Create run subdir
-        shell: bash
-        run: |
-          TMPDIR="run-$(date +%s)-$RANDOM"
-          mkdir -p "$TMPDIR"
-          echo "TMP_WORKING_DIR=$TMPDIR" >> $GITHUB_ENV
-          echo "Created temporary directory: $TMPDIR"
-          cd $TMPDIR
-
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: ${{ env.TMP_WORKING_DIR }}
 
       - name: Setup SSH Config
         id: ssh-config
@@ -79,44 +68,11 @@ jobs:
         run: |
           # Create SSH config directory if it doesn't exist
           mkdir -p $HOME/.ssh
-          
           PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
-          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
-          
-          # Convert path to Windows format when on Windows
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            PRIVATE_KEY_PATH_FOR_CONFIG=$(cygpath -w "$PRIVATE_KEY_PATH")
-          else
-            PRIVATE_KEY_PATH_FOR_CONFIG="$PRIVATE_KEY_PATH"
-          fi
-          
-          SSH_JUMP_HOST="gh-runner-linux-sidecar-${{ github.run_id }}"
-          
-          # Create SSH config file
-          cat > $HOME/.ssh/config << EOF
-          Host jump-server
-            HostName ${{ env.SSH_JUMP_SERVER }}
-            User $SSH_JUMP_HOST
-            IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
-            StrictHostKeyChecking no
-            PreferredAuthentications publickey
-          
-          Host docker-sidecar
-            HostName $SSH_JUMP_HOST
-            Port 2222
-            User runner
-            IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
-            ProxyJump jump-server
-            StrictHostKeyChecking no
-            PreferredAuthentications publickey
-          EOF
-          
-          echo "SSH_DOCKER_HOST=docker-sidecar" >> $GITHUB_ENV
-          
-          echo "SSH config created:"
-          cat $HOME/.ssh/config
+
+          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
 
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
@@ -127,7 +83,51 @@ jobs:
 
       - name: Run Docker container with volume mount
         shell: bash
-        working-directory: ${{ env.TMP_WORKING_DIR }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export MSYS_NO_PATHCONV=1
+          fi
+          # Create a test file in the workspace
+          echo "Hello from the host" > test-file.txt
+
+          # Mount the workspace and access the file from the container
+          docker run --rm -v "/mnt$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+
+          # Verify the file was modified
+          cat test-file.txt | grep "Hello from the container"
+          cat test-file.txt
+
+  macos-job:
+    name: [wait] Macos Job
+    needs: [ client-ssh-key ]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Config
+        id: ssh-config
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
+        run: |
+          # Create SSH config directory if it doesn't exist
+          mkdir -p $HOME/.ssh
+          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
+          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
+          chmod 600 "$PRIVATE_KEY_PATH"
+
+          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
+
+      # Set up the Docker sidecar environment
+      - name: Set up Remote Docker
+        id: docker-setup
+        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
+        with:
+          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
+
+      - name: Run Docker container with volume mount
+        shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             export MSYS_NO_PATHCONV=1
