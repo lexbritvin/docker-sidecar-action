@@ -161,7 +161,7 @@ runs:
         cp docker-tls/ca-certificate.pem docker-tls/client/ca.pem
         
         # Set secure permissions
-        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/key.pem
+        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/private-key.pem
         chmod 0444 docker-tls/ca-certificate.pem docker-tls/server/certificate.pem docker-tls/client/certificate.pem
         
         # Cleanup temporary files
