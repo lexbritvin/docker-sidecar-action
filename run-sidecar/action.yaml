@@ -241,7 +241,7 @@ runs:
         RETRY_COUNT=0
         MAX_RETRIES=30
         while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-          if docker version 2>&1; then
+          if docker version > /dev/null 2>&1; then
             echo "✅ Docker daemon is responding successfully"
             docker version
             break
