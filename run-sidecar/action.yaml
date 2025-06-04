@@ -6,7 +6,7 @@ inputs:
   ssh-jump-host:
     required: true
     description: 'SSH jump host server for tunneling Docker daemon access'
-  ssh-host-key:
+  ssh-jump-host-key:
     required: true
     description: 'SSH host key for jump server verification (known_hosts format)'
   ssh-authorized-keys:
@@ -302,7 +302,7 @@ runs:
         host: ${{ steps.ssh.outputs.ssh_jump_host }}
         username: ${{ steps.ssh.outputs.ssh_jump_user }}
         remote_forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_jump_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
-        known_hosts: ${{ inputs.ssh-host-key }}
+        known_hosts: ${{ inputs.ssh-jump-host-key }}
 
     - name: Prepare connection artifacts
       shell: bash
