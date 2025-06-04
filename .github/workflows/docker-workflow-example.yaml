@@ -92,17 +92,19 @@ jobs:
             PRIVATE_KEY_PATH_FOR_CONFIG="$PRIVATE_KEY_PATH"
           fi
           
+          SSH_JUMP_HOST="gh-runner-${{ github.job }}-${{ github.run_id }}"
+          
           # Create SSH config file
           cat > $HOME/.ssh/config << EOF
           Host jump-server
             HostName ${{ env.SSH_JUMP_SERVER }}
-            User ${{ env.SSH_JUMP_HOST }}
+            User $SSH_JUMP_HOST
             IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
             StrictHostKeyChecking no
             PreferredAuthentications publickey
           
           Host docker-sidecar
-            HostName ${{ env.SSH_JUMP_HOST }}
+            HostName $SSH_JUMP_HOST
             Port 2222
             User runner
             IdentityFile "$PRIVATE_KEY_PATH_FOR_CONFIG"
