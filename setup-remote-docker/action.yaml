@@ -36,25 +36,36 @@ runs:
       shell: bash
       run: |
         echo "::group::Loading connection details"
-        
+
         # Check for connection files
         if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env" ]]; then
           echo "::error::Docker connection details not found in artifacts"
           exit 1
         fi
-        
+
         if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env" ]]; then
           echo "::error::SSH connection details not found in artifacts"
           exit 1
         fi
-        
+
         # Load and export connection details
         echo "Loading Docker connection configuration..."
         source "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env"
-        
+
         echo "Loading SSH connection configuration..."
         source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
-        
+
+        # Extract KNOWN_HOSTS from the env file (handle heredoc format)
+        if [[ -n "$KNOWN_HOSTS" ]]; then
+          echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+          echo "$KNOWN_HOSTS" >> $GITHUB_OUTPUT
+          echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+          echo "::notice::Known hosts extracted from connection details"
+        else
+          echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+          echo "::warning::No known hosts found in connection details"
+        fi
+
         # Set outputs for SSH tunnel configuration
         echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
         echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
@@ -62,18 +73,18 @@ runs:
         echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
         echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
         echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
-        
+
         # Set Docker environment variables
         echo "DOCKER_HOST=$DOCKER_HOST" >> $GITHUB_ENV
         echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> $GITHUB_ENV
-        
+
         echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
         echo "docker_port=${DOCKER_PORT}" >> $GITHUB_OUTPUT
-        
+
         echo "::notice::Docker host configured: $DOCKER_HOST"
         echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
         echo "::notice::SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
-        
+
         echo "::endgroup::"
 
     - name: Setup Docker TLS certificates
@@ -127,9 +138,8 @@ runs:
         private_key_path: ${{ inputs.private_key_path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
         local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         known_hosts: |
-          ${{ inputs.known_hosts }}
+          ${{ steps.connection.outputs.extracted_known_hosts }}
 
     - name: Verify Docker connection
       shell: bash

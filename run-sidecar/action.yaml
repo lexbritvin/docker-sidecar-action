@@ -284,6 +284,27 @@ runs:
         echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
         echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
         
+        # Process host keys into known_hosts format
+        HOST_KEYS="${{ steps.configure-ssh.outputs.host-keys }}"
+        KNOWN_HOSTS="${{ inputs.ssh-jump-host-key }}\n"
+        
+        if [[ -n "$HOST_KEYS" ]]; then
+          # Process each line of host keys
+          while IFS= read -r key_line; do
+            if [[ -n "$key_line" ]]; then
+              # Format: [hostname]:port key_type key_data
+              if [[ "$SSH_PORT" != "22" ]]; then
+                KNOWN_HOSTS="${KNOWN_HOSTS}[$SSH_HOST]:$SSH_PORT $key_line"$'\n'
+              else
+                KNOWN_HOSTS="${KNOWN_HOSTS}$SSH_HOST $key_line"$'\n'
+              fi
+            fi
+          done <<< "$HOST_KEYS"
+        
+          # Remove trailing newline
+          KNOWN_HOSTS=$(echo -n "$KNOWN_HOSTS")
+        fi
+        
         # Create SSH connection details
         cat > ssh-connection-details.env <<EOF
         SSH_HOST=$SSH_JUMP_USER
@@ -292,6 +313,9 @@ runs:
         SSH_JUMP_HOST=$SSH_JUMP_HOST
         SSH_JUMP_PORT=$SSH_JUMP_PORT
         SSH_JUMP_USER=$SSH_JUMP_USER
+        KNOWN_HOSTS<<KNOWN_HOSTS_EOF
+        $KNOWN_HOSTS
+        KNOWN_HOSTS_EOF
         EOF
         
         echo "SSH connection details exported:"
