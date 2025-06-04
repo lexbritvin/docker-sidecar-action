@@ -92,12 +92,10 @@ jobs:
             PRIVATE_KEY_PATH_FOR_CONFIG="$PRIVATE_KEY_PATH"
           fi
           
-          SSH_JUMP_HOST="gh-runner-${{ github.job }}-${{ github.run_id }}"
+          SSH_JUMP_HOST="gh-runner-linux-sidecar-${{ github.run_id }}"
           
           # Create SSH config file
           cat > $HOME/.ssh/config << EOF
-          Host *
-            StrictHostKeyChecking no
           Host jump-server
             HostName ${{ env.SSH_JUMP_SERVER }}
             User $SSH_JUMP_HOST
