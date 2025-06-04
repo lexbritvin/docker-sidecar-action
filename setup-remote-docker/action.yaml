@@ -10,6 +10,10 @@ inputs:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
     default: ''
+  use-remote-share:
+    description: ''
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -157,6 +161,7 @@ runs:
     - name: Prepare SMB share connection
       shell: bash
       id: smb_share
+      if: ${{ inputs.use-remote-share == 'true' }}
       run: |
         # Get current working directory (convert Windows path format if needed)
         LOCAL_PATH=$(pwd)
@@ -173,7 +178,7 @@ runs:
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
 
     - name: Create SMB user and share on Windows
-      if: runner.os == 'Windows'
+      if: ${{ inputs.use-remote-share == 'true' && runner.os == 'Windows' }}
       shell: powershell
       run: |
         # Get current working directory for the share
@@ -201,6 +206,7 @@ runs:
 
     - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
+      if: ${{ inputs.use-remote-share == 'true' }}
       with:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}

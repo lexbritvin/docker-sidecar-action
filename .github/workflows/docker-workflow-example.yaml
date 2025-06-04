@@ -80,6 +80,7 @@ jobs:
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
           private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
+          use-remote-share: 'true'
 
       - name: Run Docker container with volume mount
         shell: bash
