@@ -191,6 +191,7 @@ runs:
           # Prepare client certificates with correct naming for Docker client
           mkdir -p docker-client-certs
           cp docker-tls/client/{ca,certificate,key}.pem docker-client-certs/
+          cp docker-tls/client/private-key.pem docker-client-certs/key.pem
           
           # Set correct permissions for client certificates
           chmod 0400 docker-client-certs/key.pem
