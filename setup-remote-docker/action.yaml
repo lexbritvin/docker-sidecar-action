@@ -154,15 +154,33 @@ runs:
         known_hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
 
+    - name: Prepare SMB share connection
+      shell: bash
+      id: smb_share
+      run: |
+        # Get current working directory (convert Windows path format if needed)
+        LOCAL_PATH=$(pwd)
+        MOUNT_PATH=$(pwd)
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          LOCAL_PATH=$(cygpath -w "$LOCAL_PATH" 2>/dev/null || echo "$LOCAL_PATH")
+          MOUNT_PATH="/mnt$MOUNT_PATH"
+        fi
+        
+        echo "local_path=$LOCAL_PATH" >> $GITHUB_OUTPUT
+        echo "mount_path=$MOUNT_POINT" >> $GITHUB_OUTPUT
+        echo "share_name=workspace_share" >> $GITHUB_OUTPUT
+        echo "share_user=smbuser" >> $GITHUB_OUTPUT
+        echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
+
     - name: Create SMB user and share on Windows
       if: runner.os == 'Windows'
       shell: powershell
       run: |
         # Get current working directory for the share
-        $CURRENT_DIR = Get-Location
-        $SHARE_NAME = "workspace_share"
-        $SMB_USER = "smbuser"
-        $SMB_PASSWORD = "SecurePass123!"
+        $CURRENT_DIR = "${{ steps.smb_share.outputs.local_path }}"
+        $SHARE_NAME = "${{ steps.smb_share.outputs.share_name }}"
+        $SMB_USER = "${{ steps.smb_share.outputs.share_user }}"
+        $SMB_PASSWORD = "${{ steps.smb_share.outputs.share_pass }}"
         
         # Create new local user with password on Windows
         $SecurePassword = ConvertTo-SecureString $SMB_PASSWORD -AsPlainText -Force
@@ -181,45 +199,40 @@ runs:
         Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
         Write-Host "User '$SMB_USER' created and granted access"
 
-    - name: Create equivalent path and mount CIFS on Linux
-      shell: bash
-      run: |
-        # Get current working directory (convert Windows path format if needed)
-        CURRENT_DIR=$(pwd)
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          MOUNT_POINT="/mnt$CURRENT_DIR"
-        fi
-        
-        SHARE_NAME="workspace_share"
-        SMB_USER="smbuser"
-        SMB_PASSWORD="SecurePass123!"
-        
-        # Execute all commands in a single SSH session
-        ssh ${{ env.SSH_DOCKER_HOST }} "
+    - name: Forward Docker port and SMB share
+      uses: lexbritvin/ssh-port-forward-action@main
+      with:
+        host: ${{ steps.connection.outputs.ssh_host }}
+        port: ${{ steps.connection.outputs.ssh_port }}
+        username: ${{ steps.connection.outputs.ssh_user }}
+        private_key_path: ${{ inputs.private_key_path }}
+        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
+        known_hosts: |
+          ${{ steps.connection.outputs.extracted_known_hosts }}
+        command: |
           set -e
-        
-          echo 'Create mount point on Linux: $MOUNT_POINT'
-          sudo mkdir -p '$MOUNT_POINT'
-        
+
+          echo 'Create mount point on Linux: ${{ steps.smb_share.outputs.mount_path }}'
+          sudo mkdir -p '${{ steps.smb_share.outputs.mount_path }}'
+
           echo 'Create credentials file for CIFS mount'
-          echo 'username=$SMB_USER' | sudo tee /etc/cifs-credentials > /dev/null
-          echo 'password=$SMB_PASSWORD' | sudo tee -a /etc/cifs-credentials > /dev/null
+          echo 'username=${{ steps.smb_share.outputs.share_user }}' | sudo tee /etc/cifs-credentials > /dev/null
+          echo 'password=${{ steps.smb_share.outputs.share_pass }}' | sudo tee -a /etc/cifs-credentials > /dev/null
           echo 'domain=WORKGROUP' | sudo tee -a /etc/cifs-credentials > /dev/null
           sudo chmod 600 /etc/cifs-credentials
-        
+
           echo 'Mount the Windows SMB share via forwarded port'
-          sudo mount -t cifs //localhost/$SHARE_NAME '$MOUNT_POINT' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
-        
+          sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.share_path }}' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+
           echo 'Verify the mount is successful:'
-          df -h | grep '$MOUNT_POINT'
-        
+          df -h | grep '${{ steps.smb_share.outputs.share_path }}'
+
           echo 'Test file operations'
-          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '$MOUNT_POINT/linux_test.txt'
-          cat '$MOUNT_POINT/linux_test.txt'
-          sudo rm '$MOUNT_POINT/linux_test.txt'
-        
+          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
+          cat '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
+          sudo rm '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
+
           echo 'CIFS mount successful!'
-        "
 
     - name: Verify Docker connection
       shell: bash
