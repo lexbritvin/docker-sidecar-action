@@ -135,9 +135,9 @@ runs:
           -extfile docker-tls/server/extensions.cnf
         
         # Generate client private key and certificate request
-        openssl genrsa -out docker-tls/client/private-key.pem 4096
+        openssl genrsa -out docker-tls/client/key.pem 4096
         openssl req -subj "/C=US/ST=Docker/L=Client/O=Docker/OU=Client/CN=docker-client" \
-          -new -key docker-tls/client/private-key.pem \
+          -new -key docker-tls/client/key.pem \
           -out docker-tls/client/certificate-request.csr
         
         # Configure client certificate extensions
@@ -153,7 +153,7 @@ runs:
           -CA docker-tls/ca-certificate.pem \
           -CAkey docker-tls/ca-private-key.pem \
           -CAcreateserial \
-          -out docker-tls/client/certificate.pem \
+          -out docker-tls/client/cert.pem \
           -extensions v3_req \
           -extfile docker-tls/client/extensions.cnf
         
@@ -161,8 +161,8 @@ runs:
         cp docker-tls/ca-certificate.pem docker-tls/client/ca.pem
         
         # Set secure permissions
-        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/private-key.pem
-        chmod 0444 docker-tls/ca-certificate.pem docker-tls/server/certificate.pem docker-tls/client/certificate.pem
+        chmod 0400 docker-tls/ca-private-key.pem docker-tls/server/private-key.pem docker-tls/client/key.pem
+        chmod 0444 docker-tls/ca-certificate.pem docker-tls/server/certificate.pem docker-tls/client/cert.pem
         
         # Cleanup temporary files
         rm -rf docker-tls/*/certificate-request.csr docker-tls/*/extensions.cnf
@@ -190,12 +190,11 @@ runs:
           
           # Prepare client certificates with correct naming for Docker client
           mkdir -p docker-client-certs
-          cp docker-tls/client/{ca,certificate}.pem docker-client-certs/
-          cp docker-tls/client/private-key.pem docker-client-certs/key.pem
+          cp docker-tls/client/{ca,cert,key}.pem docker-client-certs/
           
           # Set correct permissions for client certificates
           chmod 0400 docker-client-certs/key.pem
-          chmod 0444 docker-client-certs/{ca.pem,certificate.pem}
+          chmod 0444 docker-client-certs/{ca.pem,cert.pem}
           
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
