@@ -6,6 +6,10 @@ inputs:
   ssh-jump-host:
     required: true
     description: 'SSH jump host server for tunneling Docker daemon access'
+  ssh-jump-port:
+    required: false
+    default: '22'
+    description: 'SSH jump host port for tunneling Docker daemon access'
   ssh-jump-host-key:
     required: true
     description: 'SSH host key for jump server verification (known_hosts format)'
@@ -272,7 +276,7 @@ runs:
         SSH_PORT=${{ steps.configure-ssh.outputs.port }}
         SSH_USER=${{ steps.configure-ssh.outputs.username }}
         SSH_JUMP_HOST=${{ inputs.ssh-jump-host }}
-        SSH_JUMP_PORT=22
+        SSH_JUMP_PORT=${{ inputs.ssh-jump-port }}
         SSH_JUMP_USER="gh-runner-${{ github.job }}-${{ github.run_id }}"
 
         echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
@@ -301,7 +305,7 @@ runs:
       with:
         host: ${{ steps.ssh.outputs.ssh_jump_host }}
         username: ${{ steps.ssh.outputs.ssh_jump_user }}
-        remote_forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_jump_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
+        remote_forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
         known_hosts: ${{ inputs.ssh-jump-host-key }}
 
     - name: Prepare connection artifacts
