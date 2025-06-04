@@ -6,11 +6,11 @@ inputs:
     description: 'Name of the Docker connection artifacts to download'
     default: 'docker-conn-details'
     required: false
-  private-key-path:
+  private_key_path:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
     default: ''
-  knows-hosts:
+  known_hosts:
     description: 'Public SSH keys to add to known_hosts file. Each key should be a complete line from known_hosts file.'
     required: false
     default: ''
@@ -123,12 +123,12 @@ runs:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
-        private_key_path: ${{ inputs.private-key-path }}
+        private_key_path: ${{ inputs.private_key_path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
         local_forwards: "${{ steps.connection.outputs.docker_endpoint }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        ssh_flags: "-o StrictHostKeyChecking=no"
+        ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         known_hosts: |
-          ${{ inputs.knows-hosts }}
+          ${{ inputs.known_hosts }}
 
     - name: Verify Docker connection
       shell: bash
