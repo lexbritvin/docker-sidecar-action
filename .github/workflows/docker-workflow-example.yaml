@@ -53,7 +53,7 @@ jobs:
           poll-interval-seconds: 30
 
   windows-job:
-    name: [wait] Windows Job
+    name: "[wait] Windows Job"
     needs: [client-ssh-key]
     runs-on: windows-latest
     steps:
@@ -98,7 +98,7 @@ jobs:
           cat test-file.txt
 
   macos-job:
-    name: [wait] Macos Job
+    name: "[wait] Macos Job"
     needs: [ client-ssh-key ]
     runs-on: macos-latest
     steps:
