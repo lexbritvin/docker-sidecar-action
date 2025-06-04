@@ -10,10 +10,6 @@ inputs:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
     default: ''
-  known_hosts:
-    description: 'Public SSH keys to add to known_hosts file. Each key should be a complete line from known_hosts file.'
-    required: false
-    default: ''
 
 runs:
   using: 'composite'
@@ -76,9 +72,19 @@ runs:
         echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
         echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
         echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
-        echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
-        echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
-        echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
+        
+        # Create jump host string
+        ssh_jump_string=""
+        if [[ -n "$SSH_JUMP_HOST" ]]; then
+          ssh_jump_string="${SSH_JUMP_HOST}"
+          if [[ -n "$SSH_JUMP_USER" ]]; then
+            ssh_jump_string="${SSH_JUMP_USER}@${ssh_jump_string}"
+          fi
+          if [[ -n "$SSH_JUMP_PORT" ]]; then
+            ssh_jump_string="${ssh_jump_string}:${SSH_JUMP_PORT}"
+          fi
+        fi
+        echo "ssh_jump_string=${ssh_jump_string}" >> $GITHUB_OUTPUT
 
         # Set Docker environment variables
         echo "DOCKER_HOST=$DOCKER_HOST" >> $GITHUB_ENV
@@ -135,17 +141,85 @@ runs:
         echo "::notice::Docker TLS certificates configured: ${cert_path}"
         echo "::endgroup::"
 
-    - name: Forward Docker port
+    - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
       with:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
         private_key_path: ${{ inputs.private_key_path }}
-        jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
+        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
         local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
+        remote_forwards: "1445:localhost:445" # SMB share to local directory. TODO: Allocate random
         known_hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
+
+    - name: Create SMB user and share on Windows
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        # Get current working directory for the share
+        $CURRENT_DIR = Get-Location
+        $SHARE_NAME = "workspace_share"
+        $SMB_USER = "smbuser"
+        $SMB_PASSWORD = "SecurePass123!"
+        
+        # Create new local user with password on Windows
+        $SecurePassword = ConvertTo-SecureString $SMB_PASSWORD -AsPlainText -Force
+        New-LocalUser -Name $SMB_USER -Password $SecurePassword -FullName "SMB User" -Description "User for SMB sharing"
+        
+        # Add user to appropriate groups for file sharing
+        Add-LocalGroupMember -Group "Users" -Member $SMB_USER
+        Add-LocalGroupMember -Group "Power Users" -Member $SMB_USER -ErrorAction SilentlyContinue
+        
+        # Create SMB share on current directory
+        New-SmbShare -Name $SHARE_NAME -Path $CURRENT_DIR -FullAccess $SMB_USER -ChangeAccess "Everyone"
+        
+        # Grant full control using icacls
+        icacls $CURRENT_DIR /grant "${SMB_USER}:(OI)(CI)F" /T
+        
+        Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
+        Write-Host "User '$SMB_USER' created and granted access"
+
+    - name: Create equivalent path and mount CIFS on Linux
+      shell: bash
+      run: |
+        # Get current working directory (convert Windows path format if needed)
+        CURRENT_DIR=$(pwd)
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          MOUNT_POINT="/mnt$CURRENT_DIR"
+        fi
+        
+        SHARE_NAME="workspace_share"
+        SMB_USER="smbuser"
+        SMB_PASSWORD="SecurePass123!"
+        
+        # Execute all commands in a single SSH session
+        ssh ${{ env.SSH_DOCKER_HOST }} "
+          set -e
+        
+          echo 'Create mount point on Linux: $MOUNT_POINT'
+          sudo mkdir -p '$MOUNT_POINT'
+        
+          echo 'Create credentials file for CIFS mount'
+          echo 'username=$SMB_USER' | sudo tee /etc/cifs-credentials > /dev/null
+          echo 'password=$SMB_PASSWORD' | sudo tee -a /etc/cifs-credentials > /dev/null
+          echo 'domain=WORKGROUP' | sudo tee -a /etc/cifs-credentials > /dev/null
+          sudo chmod 600 /etc/cifs-credentials
+        
+          echo 'Mount the Windows SMB share via forwarded port'
+          sudo mount -t cifs //localhost/$SHARE_NAME '$MOUNT_POINT' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+        
+          echo 'Verify the mount is successful:'
+          df -h | grep '$MOUNT_POINT'
+        
+          echo 'Test file operations'
+          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '$MOUNT_POINT/linux_test.txt'
+          cat '$MOUNT_POINT/linux_test.txt'
+          sudo rm '$MOUNT_POINT/linux_test.txt'
+        
+          echo 'CIFS mount successful!'
+        "
 
     - name: Verify Docker connection
       shell: bash
