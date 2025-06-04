@@ -7,7 +7,7 @@ on:
 env:
   SSH_JUMP_SERVER: ssh-j.com
   SSH_JUMP_HOST_KEY: |
-    ssh-j.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIiyFQuTwegicQ+8w7dLA7A+4JMZkCk8TLWrKPklWcRt
+    [ssh-j.com]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIiyFQuTwegicQ+8w7dLA7A+4JMZkCk8TLWrKPklWcRt
 
 jobs:
   client-ssh-key:
