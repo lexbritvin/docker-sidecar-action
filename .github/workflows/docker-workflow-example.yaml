@@ -100,7 +100,7 @@ jobs:
   macos-job:
     name: [wait] Macos Job
     needs: [ client-ssh-key ]
-    runs-on: windows-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
