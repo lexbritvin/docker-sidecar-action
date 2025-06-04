@@ -172,22 +172,33 @@ runs:
         # Prepare Docker daemon configuration
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-          {
-            "tls": true,
-            "tlsverify": true,
-            "tlscacert": "$(pwd)/docker-tls/ca-certificate.pem",
-            "tlscert": "$(pwd)/docker-tls/server/certificate.pem",
-            "tlskey": "$(pwd)/docker-tls/server/private-key.pem",
-            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-          }
+        {
+          "tls": true,
+          "tlsverify": true,
+          "tlscacert": "$(pwd)/docker-tls/ca-certificate.pem",
+          "tlscert": "$(pwd)/docker-tls/server/certificate.pem",
+          "tlskey": "$(pwd)/docker-tls/server/private-key.pem",
+          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
+        }
         EOF
           DOCKER_PORT=2376
           TLS_ENABLED=1
+          
+          # Prepare client certificates with correct naming for Docker client
+          mkdir -p docker-client-certs
+          cp docker-tls/client/ca.pem docker-client-certs/ca.pem
+          cp docker-tls/client/certificate.pem docker-client-certs/cert.pem
+          cp docker-tls/client/private-key.pem docker-client-certs/key.pem
+          
+          # Set correct permissions for client certificates
+          chmod 0400 docker-client-certs/key.pem
+          chmod 0444 docker-client-certs/{ca.pem,cert.pem}
+          
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-          {
-            "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
-          }
+        {
+          "hosts": ["fd://", "unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
+        }
         EOF
           DOCKER_PORT=2375
           TLS_ENABLED=""
@@ -211,16 +222,23 @@ runs:
         
         # Verify Docker daemon startup
         echo "Verifying Docker daemon connectivity..."
+        
+        # Set up Docker client environment variables
         export DOCKER_HOST="tcp://localhost:${DOCKER_PORT}"
-        export DOCKER_TLS_VERIFY="${TLS_ENABLED}"
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
-          export DOCKER_CERT_PATH="$(pwd)/docker-tls/client"
+          export DOCKER_TLS_VERIFY="1"
+          export DOCKER_CERT_PATH="$(pwd)/docker-client-certs"
+          echo "Using TLS with certificates from: $DOCKER_CERT_PATH"
+          ls -la "$DOCKER_CERT_PATH"
+        else
+          unset DOCKER_TLS_VERIFY
+          unset DOCKER_CERT_PATH
         fi
         
         # Wait for Docker daemon with timeout
         RETRY_COUNT=0
         MAX_RETRIES=30
-        while [ $RETRY_COUNT -le $MAX_RETRIES ]; do
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
           if docker version > /dev/null 2>&1; then
             echo "✅ Docker daemon is responding successfully"
             docker version
@@ -237,11 +255,12 @@ runs:
           exit 1
         fi
         
-        # Save connection details
+        # Save connection details with proper certificate path
         cat > docker-connection-details.env <<EOF
         DOCKER_HOST=${DOCKER_HOST}
         DOCKER_TLS_VERIFY=${TLS_ENABLED}
         DOCKER_PORT=${DOCKER_PORT}
+        DOCKER_CERT_PATH=$(pwd)/docker-client-certs
         EOF
 
     - name: Prepare SSH connection details
@@ -249,7 +268,7 @@ runs:
       shell: bash
       run: |
         # Get SSH daemon details from configure-ssh step
-        SSH_HOST=${{ steps.configure-ssh.outputs.host }}
+        SSH_HOST=${{ steps.configure-ssh.outputs.hostname }}
         SSH_PORT=${{ steps.configure-ssh.outputs.port }}
         SSH_USER=${{ steps.configure-ssh.outputs.username }}
         SSH_JUMP_HOST=${{ inputs.ssh-jump-host }}
