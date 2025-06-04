@@ -97,6 +97,8 @@ runs:
         mkdir -p docker-certs
         cp "${{ inputs.docker-connection-artifact-name }}/tls-certificates"/* docker-certs/
         
+        ls -al docker-certs/
+        
         # Set certificate path with OS compatibility
         cert_path="${PWD}/docker-certs"
         if [[ "$RUNNER_OS" == "Windows" ]]; then
