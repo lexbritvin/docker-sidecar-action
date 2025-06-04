@@ -124,6 +124,8 @@ jobs:
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
           private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
+          known-hosts: |
+            ${{ env.SSH_JUMP_HOST_KEY }}
 
       - name: Forward Docker port
         uses: lexbritvin/ssh-port-forward-action@main

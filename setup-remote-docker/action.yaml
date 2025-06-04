@@ -10,6 +10,10 @@ inputs:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
     default: ''
+  knows-hosts:
+    description: 'Public SSH keys to add to known_hosts file. Each key should be a complete line from known_hosts file.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -122,7 +126,9 @@ runs:
         private_key_path: ${{ inputs.private-key-path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
         local_forwards: "${{ steps.connection.outputs.docker_endpoint }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        ssh_flags: "-o StrictHostKeyChecking=no"
+        known_hosts: |
+          ${{ inputs.knows-hosts }}
+        ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     - name: Verify Docker connection
       shell: bash
