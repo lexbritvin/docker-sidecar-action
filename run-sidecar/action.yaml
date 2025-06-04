@@ -299,7 +299,7 @@ runs:
         
         # Process host keys into known_hosts format
         HOST_KEYS="${{ steps.configure-ssh.outputs.host-keys }}"
-        KNOWN_HOSTS="${{ inputs.ssh-jump-host-key }}\n"
+        KNOWN_HOSTS="${{ inputs.ssh-jump-host-key }}"$'\n'
 
         if [[ -n "$HOST_KEYS" ]]; then
           # Process each line of host keys
