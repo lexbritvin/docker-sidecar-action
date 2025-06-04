@@ -323,7 +323,7 @@ runs:
         # Add TLS certificates if enabled
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           mkdir -p "${{ inputs.docker-connection-artifact-name }}/tls-certificates"
-          cp docker-tls/client/{ca.pem,certificate.pem,private-key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
+          cp docker-client-certs/{ca.pem,cert.pem,key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
         fi
         
         echo "✅ Connection artifacts prepared successfully"
