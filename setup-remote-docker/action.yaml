@@ -122,7 +122,7 @@ runs:
         private_key_path: ${{ inputs.private-key-path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
         local_forwards: "${{ steps.connection.outputs.docker_endpoint }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ssh_flags: "-o StrictHostKeyChecking=no"
 
     - name: Verify Docker connection
       shell: bash
