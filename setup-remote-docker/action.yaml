@@ -144,7 +144,7 @@ runs:
         
         # Test Docker connection
         echo "Testing Docker connection..."
-        if docker version > /dev/null 2>&1; then
+        if docker version 2>&1; then
           echo "✅ Docker connection successful"
           docker version --format 'Client: {{.Client.Version}}, Server: {{.Server.Version}}'
         else

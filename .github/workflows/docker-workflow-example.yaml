@@ -127,7 +127,7 @@ jobs:
           known_hosts: |
             ${{ env.SSH_JUMP_HOST_KEY }}
 
-      - name: Forward Docker port
+      - name: Forward SMB port
         uses: lexbritvin/ssh-port-forward-action@main
         with:
           host: ${{ env.SSH_DOCKER_HOST }}
