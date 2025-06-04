@@ -55,15 +55,21 @@ runs:
         echo "Loading SSH connection configuration..."
         source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
 
-        # Extract KNOWN_HOSTS from the env file (handle heredoc format)
-        if [[ -n "$KNOWN_HOSTS" ]]; then
-          echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
-          echo "$KNOWN_HOSTS" >> $GITHUB_OUTPUT
-          echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
-          echo "::notice::Known hosts extracted from connection details"
+        # Read known_hosts from separate file
+        if [[ -f "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt" ]]; then
+          KNOWN_HOSTS_CONTENT=$(cat "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt")
+          if [[ -n "$KNOWN_HOSTS_CONTENT" ]]; then
+            echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
+            echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "::notice::Known hosts loaded from ssh-known-hosts.txt"
+          else
+            echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+            echo "::warning::ssh-known-hosts.txt is empty"
+          fi
         else
           echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
-          echo "::warning::No known hosts found in connection details"
+          echo "::warning::ssh-known-hosts.txt not found in artifacts"
         fi
 
         # Set outputs for SSH tunnel configuration

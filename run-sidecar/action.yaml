@@ -300,10 +300,10 @@ runs:
               fi
             fi
           done <<< "$HOST_KEYS"
-        
-          # Remove trailing newline
-          KNOWN_HOSTS=$(echo -n "$KNOWN_HOSTS")
         fi
+        
+        # Remove trailing newline
+        KNOWN_HOSTS=$(echo -n "$KNOWN_HOSTS")
         
         # Create SSH connection details
         cat > ssh-connection-details.env <<EOF
@@ -313,10 +313,10 @@ runs:
         SSH_JUMP_HOST=$SSH_JUMP_HOST
         SSH_JUMP_PORT=$SSH_JUMP_PORT
         SSH_JUMP_USER=$SSH_JUMP_USER
-        KNOWN_HOSTS<<KNOWN_HOSTS_EOF
-        $KNOWN_HOSTS
-        KNOWN_HOSTS_EOF
         EOF
+        
+        # Save known_hosts to a separate file
+        echo "$KNOWN_HOSTS" > ssh-known-hosts.txt
         
         echo "SSH connection details exported:"
         cat ssh-connection-details.env
@@ -341,6 +341,7 @@ runs:
         # Add connection configuration files
         cp docker-connection-details.env "${{ inputs.docker-connection-artifact-name }}/"
         cp ssh-connection-details.env "${{ inputs.docker-connection-artifact-name }}/"
+        cp ssh-known-hosts.txt "${{ inputs.docker-connection-artifact-name }}/"
         
         # Add TLS certificates if enabled
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
