@@ -194,7 +194,7 @@ runs:
           
           # Set correct permissions for client certificates
           chmod 0400 docker-client-certs/key.pem
-          chmod 0444 docker-client-certs/{ca.pem,cert.pem}
+          chmod 0444 docker-client-certs/{ca,cert}.pem
           
         else
           sudo tee /etc/docker/daemon.json > /dev/null <<EOF
@@ -321,7 +321,7 @@ runs:
         # Add TLS certificates if enabled
         if [[ "${{ inputs.enable-tls }}" == "true" ]]; then
           mkdir -p "${{ inputs.docker-connection-artifact-name }}/tls-certificates"
-          cp docker-client-certs/{ca.pem,certificate.pem,key.pem} "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
+          cp docker-client-certs/{ca,cert,key}.pem "${{ inputs.docker-connection-artifact-name }}/tls-certificates/"
         fi
         
         echo "✅ Connection artifacts prepared successfully"
