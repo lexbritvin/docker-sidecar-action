@@ -56,7 +56,7 @@ runs:
         source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
         
         # Set outputs for SSH tunnel configuration
-        echo "ssh_host=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
+        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
         echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
         echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
         echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
@@ -68,6 +68,7 @@ runs:
         echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> $GITHUB_ENV
         
         echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
+        echo "docker_port=${DOCKER_PORT}" >> $GITHUB_OUTPUT
         
         echo "::notice::Docker host configured: $DOCKER_HOST"
         echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
@@ -125,7 +126,7 @@ runs:
         username: ${{ steps.connection.outputs.ssh_user }}
         private_key_path: ${{ inputs.private_key_path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_user }}@${{ steps.connection.outputs.ssh_jump_host }}:${{ steps.connection.outputs.ssh_jump_port }}"
-        local_forwards: "${{ steps.connection.outputs.docker_endpoint }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
+        local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
         ssh_flags: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         known_hosts: |
           ${{ inputs.known_hosts }}
