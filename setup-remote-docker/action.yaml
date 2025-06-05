@@ -228,15 +228,15 @@ runs:
           sudo chmod 600 /etc/cifs-credentials
 
           echo 'Mount the Windows SMB share via forwarded port'
-          sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.share_path }}' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+          sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
 
           echo 'Verify the mount is successful:'
-          df -h | grep '${{ steps.smb_share.outputs.share_path }}'
+          df -h | grep '${{ steps.smb_share.outputs.mount_path }}'
 
           echo 'Test file operations'
-          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
-          cat '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
-          sudo rm '${{ steps.smb_share.outputs.share_path }}/linux_test.txt'
+          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
+          cat '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
+          sudo rm '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
 
           echo 'CIFS mount successful!'
 
