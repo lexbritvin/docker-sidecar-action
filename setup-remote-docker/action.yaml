@@ -172,7 +172,7 @@ runs:
         fi
         
         echo "local_path=$LOCAL_PATH" >> $GITHUB_OUTPUT
-        echo "mount_path=$MOUNT_POINT" >> $GITHUB_OUTPUT
+        echo "mount_path=$MOUNT_PATH" >> $GITHUB_OUTPUT
         echo "share_name=workspace_share" >> $GITHUB_OUTPUT
         echo "share_user=smbuser" >> $GITHUB_OUTPUT
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
