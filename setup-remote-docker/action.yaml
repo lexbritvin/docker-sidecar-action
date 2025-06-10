@@ -213,6 +213,7 @@ runs:
         # Get current working directory for the share
         CURRENT_DIR="${{ steps.smb_share.outputs.local_path }}"
         SHARE_NAME="${{ steps.smb_share.outputs.share_name }}"
+        SMB_PASSWORD="${{ steps.smb_share.outputs.share_pass }}"
         
         # Use current user
         CURRENT_USER="${{ steps.smb_share.outputs.share_user }}"
@@ -225,60 +226,111 @@ runs:
         # Install Samba if not present (using Homebrew if available)
         if command -v brew >/dev/null 2>&1; then
           echo "Installing Samba via Homebrew..."
-          brew install samba 2>/dev/null || echo "Samba installation skipped"
+          brew install samba 2>/dev/null || echo "Samba may already be installed"
         fi
         
         # Set permissions on the shared directory
         chmod 755 "$CURRENT_DIR"
         
-        # Try to enable built-in SMB sharing
-        sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
+        # Check for Homebrew Samba installation
+        HOMEBREW_PREFIX=$(brew --prefix 2>/dev/null || echo "/opt/homebrew")
+        SAMBA_CONF_PATH="$HOMEBREW_PREFIX/etc/smb.conf"
+        SMBPASSWD_PATH="$HOMEBREW_PREFIX/bin/smbpasswd"
+        SMBD_PATH="$HOMEBREW_PREFIX/sbin/samba-dot-org-smbd"
+        TESTPARM_PATH="$HOMEBREW_PREFIX/bin/testparm"
         
-        # Create the share using the sharing command
-        sudo sharing -a "$CURRENT_DIR" -S "$SHARE_NAME" -s 001 -g 000 -n "$SHARE_NAME" || echo "Built-in sharing command failed"
+        if [[ -f "$SMBPASSWD_PATH" ]]; then
+          echo "Configuring Homebrew Samba..."
         
-        # If Samba was installed, configure it
-        if command -v smbpasswd >/dev/null 2>&1; then
-          echo "Configuring Samba..."
-          SMB_PASSWORD="${{ steps.smb_share.outputs.share_pass }}"
+          # Create a basic smb.conf file
+          sudo tee "$SAMBA_CONF_PATH" > /dev/null << EOF
+        [global]
+        workgroup = WORKGROUP
+        security = user
+        map to guest = bad user
+        dns proxy = no
+        server role = standalone server
         
-          # Add user to Samba
-          echo "$SMB_PASSWORD" | sudo smbpasswd -a -s $CURRENT_USER
-          sudo smbpasswd -e $CURRENT_USER
+        # Logging
+        log file = /var/log/samba/log.%m
+        max log size = 1000
         
-          # Create or update smb.conf
-          sudo tee -a /usr/local/etc/smb.conf > /dev/null << EOF
-  
-          [$SHARE_NAME]
-          path = $CURRENT_DIR
-          valid users = $CURRENT_USER
-          read only = no
-          browseable = yes
-          create mask = 0755
-          directory mask = 0755
+        # Performance
+        socket options = TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072
+        
+        [$SHARE_NAME]
+        path = $CURRENT_DIR
+        valid users = $CURRENT_USER
+        read only = no
+        browseable = yes
+        writable = yes
+        guest ok = no
+        create mask = 0755
+        directory mask = 0755
+        force user = $CURRENT_USER
         EOF
-  
-          # Start Samba service
-          sudo brew services start samba 2>/dev/null || true
-          echo "✅ Samba configured and started"
+          
+          # Test the configuration
+          echo "Testing Samba configuration..."
+          if [[ -f "$TESTPARM_PATH" ]]; then
+            sudo "$TESTPARM_PATH" -s "$SAMBA_CONF_PATH" || echo "Configuration has warnings but may still work"
+          fi
+          
+          # Create log directory
+          sudo mkdir -p /var/log/samba
+          sudo chown $CURRENT_USER /var/log/samba
+          
+          # Add user to Samba (create user database)
+          echo "Adding user to Samba..."
+          echo -e "$SMB_PASSWORD\n$SMB_PASSWORD" | sudo "$SMBPASSWD_PATH" -a -s $CURRENT_USER
+          sudo "$SMBPASSWD_PATH" -e $CURRENT_USER
+          
+          # Start Samba daemon manually (since brew services might not work in CI)
+          echo "Starting Samba daemon..."
+          sudo "$SMBD_PATH" -D -s "$SAMBA_CONF_PATH" || echo "Samba daemon start attempted"
+          
+          # Alternative: try using brew services
+          brew services start samba 2>/dev/null || echo "Brew services start skipped"
+          
+          echo "✅ Homebrew Samba configured"
         else
-          echo "⚠️  Using built-in macOS sharing (limited functionality)"
+          echo "⚠️  Homebrew Samba not found, trying built-in macOS sharing..."
+          
+          # Try built-in macOS sharing as fallback
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
+          sudo sharing -a "$CURRENT_DIR" -S "$SHARE_NAME" -s 001 -g 000 -n "$SHARE_NAME" || echo "Built-in sharing failed"
         fi
-  
+            
         # Wait for services to start
-        sleep 3
+        sleep 5
         
         echo "File sharing setup completed on macOS"
         
-        # Test if SMB is listening
+        # Test if SMB is listening on port 445
         if netstat -an | grep -q ":445.*LISTEN"; then
           echo "✅ SMB service is listening on port 445"
+        elif lsof -i :445 2>/dev/null | grep -q LISTEN; then
+          echo "✅ SMB service detected via lsof"
         else
-          echo "⚠️  SMB service may not be active (this is common in CI environments)"
+          echo "⚠️  SMB service may not be active"
+          echo "Checking for any SMB processes..."
+          ps aux | grep -i smb | grep -v grep || echo "No SMB processes found"
         fi
-
-        # Display available shares
-        sharing -l 2>/dev/null || echo "Share listing not available"
+        
+        # Show Samba status if available
+        if [[ -f "$SMBPASSWD_PATH" ]] && [[ -f "$SAMBA_CONF_PATH" ]]; then
+          echo "Samba configuration summary:"
+          echo "- Config file: $SAMBA_CONF_PATH"
+          echo "- Share name: $SHARE_NAME"
+          echo "- Share path: $CURRENT_DIR"
+          echo "- User configured: $CURRENT_USER"
+          
+          # List configured users
+          sudo "$SMBPASSWD_PATH" -l 2>/dev/null || echo "Unable to list Samba users"
+        fi
+            
+        # Display available shares (if possible)
+        sharing -l 2>/dev/null || echo "Built-in share listing not available"
 
     - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
