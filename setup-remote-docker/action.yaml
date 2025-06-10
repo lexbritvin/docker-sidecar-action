@@ -427,7 +427,7 @@ runs:
           df -h | grep '${{ steps.smb_share.outputs.mount_path }}'
 
           echo 'Test file operations'
-          echo 'Test from Linux CIFS mount to Windows share' | sudo tee '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
+          echo 'Test from Linux CIFS mount to SMB share' | sudo tee '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
           cat '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
           sudo rm '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
 
