@@ -245,29 +245,34 @@ runs:
           # Create a basic smb.conf file
           sudo tee "$SAMBA_CONF_PATH" > /dev/null << EOF
         [global]
-        workgroup = WORKGROUP
-        security = user
-        map to guest = bad user
-        dns proxy = no
-        server role = standalone server
-        
-        # Logging
-        log file = /var/log/samba/log.%m
-        max log size = 1000
-        
-        # Performance
-        socket options = TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072
+          workgroup = WORKGROUP
+          security = user
+          map to guest = bad user
+          dns proxy = no
+          server role = standalone server
+          netbios name = RUNNER
+          
+          # Use custom paths for Homebrew installation
+          private dir = $SAMBA_VAR_DIR/private
+          lock directory = $SAMBA_VAR_DIR/locks
+          state directory = $SAMBA_VAR_DIR
+          cache directory = $SAMBA_VAR_DIR
+          
+          # Logging
+          log file = /var/log/samba/log.%m
+          max log size = 1000
+          log level = 1
         
         [$SHARE_NAME]
-        path = $CURRENT_DIR
-        valid users = $CURRENT_USER
-        read only = no
-        browseable = yes
-        writable = yes
-        guest ok = no
-        create mask = 0755
-        directory mask = 0755
-        force user = $CURRENT_USER
+          path = $CURRENT_DIR
+          valid users = $CURRENT_USER
+          read only = no
+          browseable = yes
+          writable = yes
+          guest ok = no
+          create mask = 0755
+          directory mask = 0755
+          force user = $CURRENT_USER
         EOF
           
           # Test the configuration
@@ -275,24 +280,40 @@ runs:
           if [[ -f "$TESTPARM_PATH" ]]; then
             sudo "$TESTPARM_PATH" -s "$SAMBA_CONF_PATH" || echo "Configuration has warnings but may still work"
           fi
-          
-          # Create log directory
-          sudo mkdir -p /var/log/samba
-          sudo chown $CURRENT_USER /var/log/samba
-          
-          # Add user to Samba (create user database)
+        
+          # Initialize Samba databases in the custom location
+          echo "Initializing Samba databases..."
+        
+          # Create the secrets.tdb and other necessary files
+          sudo touch "$SAMBA_VAR_DIR/private/secrets.tdb"
+          sudo touch "$SAMBA_VAR_DIR/private/passdb.tdb"
+          sudo chown $CURRENT_USER:staff "$SAMBA_VAR_DIR/private/"*
+          sudo chmod 600 "$SAMBA_VAR_DIR/private/"*
+        
+          # Add user to Samba with proper database location
           echo "Adding user to Samba..."
-          echo -e "$SMB_PASSWORD\n$SMB_PASSWORD" | sudo "$SMBPASSWD_PATH" -a -s $CURRENT_USER
-          sudo "$SMBPASSWD_PATH" -e $CURRENT_USER
+          export SMB_CONF_PATH="$SAMBA_CONF_PATH"
           
-          # Start Samba daemon manually (since brew services might not work in CI)
+          # Try to add the user (create if doesn't exist)
+          if echo -e "$SMB_PASSWORD\n$SMB_PASSWORD" | "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -a -s $CURRENT_USER 2>/dev/null; then
+              echo "✅ User added to Samba successfully"
+          else
+              echo "⚠️  User addition failed, trying alternative method..."
+              # Alternative: create a simple smbpasswd file
+              echo "$CURRENT_USER:1001:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:$(echo -n "$SMB_PASSWORD" | openssl dgst -md4 -binary | xxd -p | tr -d '\n' | tr 'a-z' 'A-Z')::" | sudo tee "$SAMBA_VAR_DIR/private/smbpasswd" > /dev/null
+              sudo chown $CURRENT_USER:staff "$SAMBA_VAR_DIR/private/smbpasswd"
+              sudo chmod 600 "$SAMBA_VAR_DIR/private/smbpasswd"
+          fi
+        
+          # Enable the user
+          "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -e $CURRENT_USER 2>/dev/null || echo "User enable attempted"
+        
+          # Start Samba daemon manually
           echo "Starting Samba daemon..."
-          sudo "$SMBD_PATH" -D -s "$SAMBA_CONF_PATH" || echo "Samba daemon start attempted"
-          
-          # Alternative: try using brew services
-          brew services start samba 2>/dev/null || echo "Brew services start skipped"
-          
+          sudo "$SMBD_PATH" -D -s "$SAMBA_CONF_PATH" --option="private dir=$SAMBA_VAR_DIR/private" || echo "Samba daemon start attempted"
+        
           echo "✅ Homebrew Samba configured"
+
         else
           echo "⚠️  Homebrew Samba not found, trying built-in macOS sharing..."
           
@@ -300,7 +321,7 @@ runs:
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
           sudo sharing -a "$CURRENT_DIR" -S "$SHARE_NAME" -s 001 -g 000 -n "$SHARE_NAME" || echo "Built-in sharing failed"
         fi
-            
+        
         # Wait for services to start
         sleep 5
         
@@ -316,21 +337,14 @@ runs:
           echo "Checking for any SMB processes..."
           ps aux | grep -i smb | grep -v grep || echo "No SMB processes found"
         fi
-        
-        # Show Samba status if available
-        if [[ -f "$SMBPASSWD_PATH" ]] && [[ -f "$SAMBA_CONF_PATH" ]]; then
-          echo "Samba configuration summary:"
-          echo "- Config file: $SAMBA_CONF_PATH"
-          echo "- Share name: $SHARE_NAME"
-          echo "- Share path: $CURRENT_DIR"
-          echo "- User configured: $CURRENT_USER"
-          
-          # List configured users
-          sudo "$SMBPASSWD_PATH" -l 2>/dev/null || echo "Unable to list Samba users"
-        fi
-            
-        # Display available shares (if possible)
-        sharing -l 2>/dev/null || echo "Built-in share listing not available"
+
+        # Show final status
+        echo "Samba setup summary:"
+        echo "- Config file: $SAMBA_CONF_PATH"
+        echo "- Private dir: $SAMBA_VAR_DIR/private"
+        echo "- Share name: $SHARE_NAME"
+        echo "- Share path: $CURRENT_DIR"
+        echo "- User configured: $CURRENT_USER"
 
     - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
