@@ -18,145 +18,31 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Wait for Docker sidecar to start
-      uses: lexbritvin/wait-for-action@main
-      with:
-        condition-type: 'artifact'
-        artifact-name: ${{ inputs.docker-connection-artifact-name }}
-        timeout-seconds: 300
-
-    - name: Download Docker connection artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ inputs.docker-connection-artifact-name }}
-        path: ${{ inputs.docker-connection-artifact-name }}
-
-    - name: Load connection details
-      id: connection
+    - name: Install Docker client on macOS
+      if: runner.os == 'macOS'
       shell: bash
       run: |
-        echo "::group::Loading connection details"
-
-        # Check for connection files
-        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env" ]]; then
-          echo "::error::Docker connection details not found in artifacts"
-          exit 1
-        fi
-
-        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env" ]]; then
-          echo "::error::SSH connection details not found in artifacts"
-          exit 1
-        fi
-
-        # Load and export connection details
-        echo "Loading Docker connection configuration..."
-        source "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env"
-
-        echo "Loading SSH connection configuration..."
-        source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
-
-        # Read known_hosts from separate file
-        if [[ -f "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt" ]]; then
-          KNOWN_HOSTS_CONTENT=$(cat "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt")
-          if [[ -n "$KNOWN_HOSTS_CONTENT" ]]; then
-            echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
-            echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
-            echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
-            echo "::notice::Known hosts loaded from ssh-known-hosts.txt"
-          else
-            echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
-            echo "::warning::ssh-known-hosts.txt is empty"
-          fi
+        echo "::group::Installing Docker client on macOS"
+        
+        # Check if Docker is already installed
+        if command -v docker >/dev/null 2>&1; then
+          echo "✅ Docker client is already installed"
+          docker --version
         else
-          echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
-          echo "::warning::ssh-known-hosts.txt not found in artifacts"
-        fi
-
-        # Set outputs for SSH tunnel configuration
-        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
-        echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
-        echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
+          echo "Installing Docker client via Homebrew..."
         
-        # Create jump host string
-        ssh_jump_string=""
-        if [[ -n "$SSH_JUMP_HOST" ]]; then
-          ssh_jump_string="${SSH_JUMP_HOST}"
-          if [[ -n "$SSH_JUMP_USER" ]]; then
-            ssh_jump_string="${SSH_JUMP_USER}@${ssh_jump_string}"
-          fi
-          if [[ -n "$SSH_JUMP_PORT" ]]; then
-            ssh_jump_string="${ssh_jump_string}:${SSH_JUMP_PORT}"
-          fi
-        fi
-        echo "ssh_jump_string=${ssh_jump_string}" >> $GITHUB_OUTPUT
-
-        # Set Docker environment variables
-        echo "DOCKER_HOST=$DOCKER_HOST" >> $GITHUB_ENV
-        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> $GITHUB_ENV
-
-        echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
-        echo "docker_port=${DOCKER_PORT}" >> $GITHUB_OUTPUT
-
-        echo "::notice::Docker host configured: $DOCKER_HOST"
-        echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
-        echo "::notice::SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
-
-        echo "::endgroup::"
-
-    - name: Setup Docker TLS certificates
-      shell: bash
-      run: |
-        # Return early if TLS is not enabled
-        if [[ "${DOCKER_TLS_VERIFY}" != "1" ]]; then
-          echo "::notice::TLS verification disabled, skipping certificate setup"
-          exit 0
-        fi
-        
-        echo "::group::Setting up Docker TLS certificates"
-        
-        # Check if TLS certificates exist
-        if [[ ! -d "${{ inputs.docker-connection-artifact-name }}/tls-certificates" ]]; then
-          echo "::error::TLS certificates directory not found in artifacts"
-          exit 1
-        fi
-        
-        # Create Docker certificates directory
-        mkdir -p docker-certs
-        cp "${{ inputs.docker-connection-artifact-name }}/tls-certificates"/* docker-certs/
-        
-        # Set certificate path with OS compatibility
-        cert_path="${PWD}/docker-certs"
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          # Convert Unix path to Windows path format for Git Bash/MSYS2
-          cert_path=$(cygpath -w "$cert_path" 2>/dev/null || echo "$cert_path")
-        fi
-        
-        echo "DOCKER_CERT_PATH=${cert_path}" >> $GITHUB_ENV
-        
-        # Verify certificate files exist
-        required_files=("ca.pem" "cert.pem" "key.pem")
-        for file in "${required_files[@]}"; do
-          if [[ ! -f "docker-certs/${file}" ]]; then
-            echo "::error::Required certificate file missing: ${file}"
+          # Check if Homebrew is available
+          if command -v brew >/dev/null 2>&1; then
+            brew install docker
+            echo "✅ Docker client installed successfully"
+            docker --version
+          else
+            echo "::error::Homebrew not found. This action requires Homebrew for Docker installation."
             exit 1
           fi
-        done
+        fi
         
-        echo "::notice::Docker TLS certificates configured: ${cert_path}"
         echo "::endgroup::"
-
-    - name: Forward Docker port and SMB share
-      uses: lexbritvin/ssh-port-forward-action@main
-      with:
-        host: ${{ steps.connection.outputs.ssh_host }}
-        port: ${{ steps.connection.outputs.ssh_port }}
-        username: ${{ steps.connection.outputs.ssh_user }}
-        private_key_path: ${{ inputs.private_key_path }}
-        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
-        local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        remote_forwards: "1445:localhost:445" # SMB share to local directory. TODO: Allocate random
-        known_hosts: |
-          ${{ steps.connection.outputs.extracted_known_hosts }}
 
     - name: Prepare SMB share connection
       shell: bash
@@ -205,32 +91,6 @@ runs:
         
         Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
         Write-Host "User '$SMB_USER' created and granted access"
-
-    - name: Install Docker client on macOS
-      if: runner.os == 'macOS'
-      shell: bash
-      run: |
-        echo "::group::Installing Docker client on macOS"
-        
-        # Check if Docker is already installed
-        if command -v docker >/dev/null 2>&1; then
-          echo "✅ Docker client is already installed"
-          docker --version
-        else
-          echo "Installing Docker client via Homebrew..."
-        
-          # Check if Homebrew is available
-          if command -v brew >/dev/null 2>&1; then
-            brew install docker
-            echo "✅ Docker client installed successfully"
-            docker --version
-          else
-            echo "::error::Homebrew not found. This action requires Homebrew for Docker installation."
-            exit 1
-          fi
-        fi
-        
-        echo "::endgroup::"
 
     - name: Create SMB user and share on macOS
       if: ${{ inputs.use-remote-share == 'true' && runner.os == 'macOS' }}
@@ -396,6 +256,146 @@ runs:
         echo "- Share name: $SHARE_NAME"
         echo "- Share path: $CURRENT_DIR"
         echo "- User configured: $CURRENT_USER"
+
+    - name: Wait for Docker sidecar to start
+      uses: lexbritvin/wait-for-action@main
+      with:
+        condition-type: 'artifact'
+        artifact-name: ${{ inputs.docker-connection-artifact-name }}
+        timeout-seconds: 300
+
+    - name: Download Docker connection artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.docker-connection-artifact-name }}
+        path: ${{ inputs.docker-connection-artifact-name }}
+
+    - name: Load connection details
+      id: connection
+      shell: bash
+      run: |
+        echo "::group::Loading connection details"
+
+        # Check for connection files
+        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env" ]]; then
+          echo "::error::Docker connection details not found in artifacts"
+          exit 1
+        fi
+
+        if [[ ! -f "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env" ]]; then
+          echo "::error::SSH connection details not found in artifacts"
+          exit 1
+        fi
+
+        # Load and export connection details
+        echo "Loading Docker connection configuration..."
+        source "${{ inputs.docker-connection-artifact-name }}/docker-connection-details.env"
+
+        echo "Loading SSH connection configuration..."
+        source "${{ inputs.docker-connection-artifact-name }}/ssh-connection-details.env"
+
+        # Read known_hosts from separate file
+        if [[ -f "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt" ]]; then
+          KNOWN_HOSTS_CONTENT=$(cat "${{ inputs.docker-connection-artifact-name }}/ssh-known-hosts.txt")
+          if [[ -n "$KNOWN_HOSTS_CONTENT" ]]; then
+            echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
+            echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "::notice::Known hosts loaded from ssh-known-hosts.txt"
+          else
+            echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+            echo "::warning::ssh-known-hosts.txt is empty"
+          fi
+        else
+          echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+          echo "::warning::ssh-known-hosts.txt not found in artifacts"
+        fi
+
+        # Set outputs for SSH tunnel configuration
+        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
+        echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
+        echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
+        
+        # Create jump host string
+        ssh_jump_string=""
+        if [[ -n "$SSH_JUMP_HOST" ]]; then
+          ssh_jump_string="${SSH_JUMP_HOST}"
+          if [[ -n "$SSH_JUMP_USER" ]]; then
+            ssh_jump_string="${SSH_JUMP_USER}@${ssh_jump_string}"
+          fi
+          if [[ -n "$SSH_JUMP_PORT" ]]; then
+            ssh_jump_string="${ssh_jump_string}:${SSH_JUMP_PORT}"
+          fi
+        fi
+        echo "ssh_jump_string=${ssh_jump_string}" >> $GITHUB_OUTPUT
+
+        # Set Docker environment variables
+        echo "DOCKER_HOST=$DOCKER_HOST" >> $GITHUB_ENV
+        echo "DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY" >> $GITHUB_ENV
+
+        echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
+        echo "docker_port=${DOCKER_PORT}" >> $GITHUB_OUTPUT
+
+        echo "::notice::Docker host configured: $DOCKER_HOST"
+        echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
+        echo "::notice::SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
+
+        echo "::endgroup::"
+
+    - name: Setup Docker TLS certificates
+      shell: bash
+      run: |
+        # Return early if TLS is not enabled
+        if [[ "${DOCKER_TLS_VERIFY}" != "1" ]]; then
+          echo "::notice::TLS verification disabled, skipping certificate setup"
+          exit 0
+        fi
+        
+        echo "::group::Setting up Docker TLS certificates"
+        
+        # Check if TLS certificates exist
+        if [[ ! -d "${{ inputs.docker-connection-artifact-name }}/tls-certificates" ]]; then
+          echo "::error::TLS certificates directory not found in artifacts"
+          exit 1
+        fi
+        
+        # Create Docker certificates directory
+        mkdir -p docker-certs
+        cp "${{ inputs.docker-connection-artifact-name }}/tls-certificates"/* docker-certs/
+        
+        # Set certificate path with OS compatibility
+        cert_path="${PWD}/docker-certs"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          # Convert Unix path to Windows path format for Git Bash/MSYS2
+          cert_path=$(cygpath -w "$cert_path" 2>/dev/null || echo "$cert_path")
+        fi
+        
+        echo "DOCKER_CERT_PATH=${cert_path}" >> $GITHUB_ENV
+        
+        # Verify certificate files exist
+        required_files=("ca.pem" "cert.pem" "key.pem")
+        for file in "${required_files[@]}"; do
+          if [[ ! -f "docker-certs/${file}" ]]; then
+            echo "::error::Required certificate file missing: ${file}"
+            exit 1
+          fi
+        done
+        
+        echo "::notice::Docker TLS certificates configured: ${cert_path}"
+        echo "::endgroup::"
+
+    - name: Forward Docker port and SMB share
+      uses: lexbritvin/ssh-port-forward-action@main
+      with:
+        host: ${{ steps.connection.outputs.ssh_host }}
+        port: ${{ steps.connection.outputs.ssh_port }}
+        username: ${{ steps.connection.outputs.ssh_user }}
+        private_key_path: ${{ inputs.private_key_path }}
+        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
+        local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
+        remote_forwards: "1445:localhost:445" # SMB share to local directory. TODO: Allocate random
+        known_hosts: |
+          ${{ steps.connection.outputs.extracted_known_hosts }}
 
     - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
