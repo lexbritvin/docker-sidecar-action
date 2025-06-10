@@ -59,9 +59,9 @@ runs:
           SMB_USER="smbuser"
         fi
         
-        SMB_LOOPBACK="127.$((RANDOM % 256)).$((RANDOM % 256)).$((RANDOM % 256))"
-        echo "smb_loopback=$SMB_LOOPBACK" >> $GITHUB_OUTPUT
-        echo "smb_remote_fwd=$SMB_LOOPBACK:445:localhost:445" >> $GITHUB_OUTPUT
+        SMB_PORT=$(echo $((49152 + RANDOM % 16384)))
+        echo "smb_port=$SMB_PORT" >> $GITHUB_OUTPUT
+        echo "smb_remote_fwd=$SMB_PORT:localhost:445" >> $GITHUB_OUTPUT
         
         echo "local_path=$LOCAL_PATH" >> $GITHUB_OUTPUT
         echo "mount_path=$MOUNT_PATH" >> $GITHUB_OUTPUT
@@ -425,7 +425,7 @@ runs:
           sudo chmod 600 /etc/cifs-credentials
 
           echo 'Mount the SMB share via forwarded port'
-          sudo mount -t cifs //${{ steps.smb_share.outputs.smb_loopback }}/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+          sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=${{ steps.smb_share.outputs.smb_port }},vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
 
           echo 'Verify the mount is successful:'
           df -h | grep '${{ steps.smb_share.outputs.mount_path }}'
