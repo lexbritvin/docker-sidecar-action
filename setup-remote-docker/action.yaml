@@ -365,7 +365,7 @@ runs:
         fi
         
         # Enable the user
-        "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -e "$CURRENT_USER" 2>/dev/null || echo "User enable attempted"
+        sudo "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -e "$CURRENT_USER" 2>/dev/null || echo "User enable attempted"
         
         # Start Samba daemon
         echo "Starting Samba daemon..."
