@@ -252,6 +252,20 @@ runs:
           server role = standalone server
           netbios name = RUNNER
           
+          # Force SMB 3.0 only - disable older protocols
+          server min protocol = SMB3_00
+          server max protocol = SMB3_11
+          client min protocol = SMB3_00
+          client max protocol = SMB3_11
+          
+          # Disable SMB1 completely
+          server smb encrypt = required
+          smb encrypt = required
+          
+          # Modern SMB 3.0 features
+          server signing = mandatory
+          client signing = mandatory
+          
           # Use custom paths for Homebrew installation
           private dir = $SAMBA_VAR_DIR/private
           lock directory = $SAMBA_VAR_DIR/locks
@@ -261,7 +275,12 @@ runs:
           # Logging
           log file = /var/log/samba/log.%m
           max log size = 1000
-          log level = 1
+          log level = 2
+          
+          # Performance optimizations for SMB 3.0
+          aio read size = 1048576
+          aio write size = 1048576
+          use sendfile = yes
         
         [$SHARE_NAME]
           path = $CURRENT_DIR
@@ -273,8 +292,12 @@ runs:
           create mask = 0755
           directory mask = 0755
           force user = $CURRENT_USER
-        EOF
           
+          # SMB 3.0 share-level settings
+          encrypt passwords = yes
+          smb encrypt = required
+        EOF
+
           # Test the configuration
           echo "Testing Samba configuration..."
           if [[ -f "$TESTPARM_PATH" ]]; then
