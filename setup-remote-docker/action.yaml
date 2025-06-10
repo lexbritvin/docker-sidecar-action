@@ -393,7 +393,7 @@ runs:
         private_key_path: ${{ inputs.private_key_path }}
         jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
         local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        remote_forwards: "1445:localhost:445" # SMB share to local directory. TODO: Allocate random
+        remote_forwards: "${{ steps.connection.outputs.ssh_host }}:445:localhost:445" # SMB share to local directory. TODO: Allocate random
         known_hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
 
@@ -421,7 +421,7 @@ runs:
           sudo chmod 600 /etc/cifs-credentials
 
           echo 'Mount the SMB share via forwarded port'
-          sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
+          sudo mount -t cifs //${{ steps.connection.outputs.ssh_host }}/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
 
           echo 'Verify the mount is successful:'
           df -h | grep '${{ steps.smb_share.outputs.mount_path }}'
