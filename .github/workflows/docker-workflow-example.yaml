@@ -52,51 +52,51 @@ jobs:
           timeout-seconds: 1800
           poll-interval-seconds: 30
 
-#  windows-job:
-#    name: "[wait] Windows Job"
-#    needs: [client-ssh-key]
-#    runs-on: windows-latest
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#
-#      - name: Setup SSH Config
-#        id: ssh-config
-#        shell: bash
-#        env:
-#          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
-#        run: |
-#          # Create SSH config directory if it doesn't exist
-#          mkdir -p $HOME/.ssh
-#          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
-#          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
-#          chmod 600 "$PRIVATE_KEY_PATH"
-#
-#          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
-#
-#      # Set up the Docker sidecar environment
-#      - name: Set up Remote Docker
-#        id: docker-setup
-#        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
-#        with:
-#          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
-#          use-remote-share: 'true'
-#
-#      - name: Run Docker container with volume mount
-#        shell: bash
-#        run: |
-#          if [[ "$RUNNER_OS" == "Windows" ]]; then
-#            export MSYS_NO_PATHCONV=1
-#          fi
-#          # Create a test file in the workspace
-#          echo "Hello from the host" > test-file.txt
-#
-#          # Mount the workspace and access the file from the container
-#          docker run --rm -v "/mnt$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
-#
-#          # Verify the file was modified
-#          cat test-file.txt | grep "Hello from the container"
-#          cat test-file.txt
+  windows-job:
+    name: "[wait] Windows Job"
+    needs: [client-ssh-key]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Config
+        id: ssh-config
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
+        run: |
+          # Create SSH config directory if it doesn't exist
+          mkdir -p $HOME/.ssh
+          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
+          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
+          chmod 600 "$PRIVATE_KEY_PATH"
+
+          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
+
+      # Set up the Docker sidecar environment
+      - name: Set up Remote Docker
+        id: docker-setup
+        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
+        with:
+          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
+          use-remote-share: 'true'
+
+      - name: Run Docker container with volume mount
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export MSYS_NO_PATHCONV=1
+          fi
+          # Create a test file in the workspace
+          echo "Hello from the host" > test-file.txt
+
+          # Mount the workspace and access the file from the container
+          docker run --rm -v "/mnt$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+
+          # Verify the file was modified
+          cat test-file.txt | grep "Hello from the container"
+          cat test-file.txt
 
   macos-job:
     name: "[wait] Macos Job"
