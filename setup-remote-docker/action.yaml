@@ -166,15 +166,17 @@ runs:
         # Get current working directory (convert Windows path format if needed)
         LOCAL_PATH=$(pwd)
         MOUNT_PATH=$(pwd)
+        SMB_USER=$(whoami)
         if [[ "$RUNNER_OS" == "Windows" ]]; then
           LOCAL_PATH=$(cygpath -w "$LOCAL_PATH" 2>/dev/null || echo "$LOCAL_PATH")
           MOUNT_PATH="/mnt$MOUNT_PATH"
+          SMB_USER="smbuser"
         fi
         
         echo "local_path=$LOCAL_PATH" >> $GITHUB_OUTPUT
         echo "mount_path=$MOUNT_PATH" >> $GITHUB_OUTPUT
         echo "share_name=workspace_share" >> $GITHUB_OUTPUT
-        echo "share_user=smbuser" >> $GITHUB_OUTPUT
+        echo "share_user=$SMB_USER" >> $GITHUB_OUTPUT
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
 
     - name: Create SMB user and share on Windows
@@ -204,6 +206,45 @@ runs:
         Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
         Write-Host "User '$SMB_USER' created and granted access"
 
+    - name: Create SMB user and share on macOS
+      if: ${{ inputs.use-remote-share == 'true' && runner.os == 'macOS' }}
+      shell: bash
+      run: |
+        # Get current working directory for the share
+        CURRENT_DIR="${{ steps.smb_share.outputs.local_path }}"
+        SHARE_NAME="${{ steps.smb_share.outputs.share_name }}"
+        SMB_USER="${{ steps.smb_share.outputs.share_user }}"
+        SMB_PASSWORD="${{ steps.smb_share.outputs.share_pass }}"
+        
+        echo "Creating SMB share on macOS using user $SMB_USER..."
+        # Enable SMB sharing service if not already enabled
+        sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
+        
+        # Create the share using the sharing command
+        sudo sharing -a "$CURRENT_DIR" -S "$SHARE_NAME" -s 001 -g 000 -n "$SHARE_NAME"
+        
+        # Set permissions on the shared directory to ensure accessibility
+        chmod 755 "$CURRENT_DIR"
+        
+        # Add current user to the _smbeveryone group to allow SMB access
+        sudo dseditgroup -o edit -a $SMB_USER -t user _smbeveryone 2>/dev/null || true
+        
+        # Add current user to SMB database with the specified password
+        echo "$SMB_PASSWORD" | sudo smbpasswd -a -s $SMB_USER
+        sudo smbpasswd -e $SMB_USER
+        
+        # Restart SMB service to apply changes
+        sudo launchctl unload /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
+        sudo launchctl load /System/Library/LaunchDaemons/com.apple.smbd.plist 2>/dev/null || true
+        
+        # Wait a moment for the service to start
+        sleep 2
+
+        echo "SMB sharing enabled on macOS"
+        
+        # Display share information
+        sharing -l 2>/dev/null || echo "Share created successfully"
+
     - name: Forward Docker port and SMB share
       uses: lexbritvin/ssh-port-forward-action@main
       if: ${{ inputs.use-remote-share == 'true' }}
@@ -227,7 +268,7 @@ runs:
           echo 'domain=WORKGROUP' | sudo tee -a /etc/cifs-credentials > /dev/null
           sudo chmod 600 /etc/cifs-credentials
 
-          echo 'Mount the Windows SMB share via forwarded port'
+          echo 'Mount the SMB share via forwarded port'
           sudo mount -t cifs //localhost/${{ steps.smb_share.outputs.share_name }} '${{ steps.smb_share.outputs.mount_path }}' -o credentials=/etc/cifs-credentials,port=1445,vers=3.0,iocharset=utf8,file_mode=0777,dir_mode=0777,nobrl
 
           echo 'Verify the mount is successful:'
