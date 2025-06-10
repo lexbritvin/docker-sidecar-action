@@ -206,6 +206,32 @@ runs:
         Write-Host "SMB share '$SHARE_NAME' created at path: $CURRENT_DIR"
         Write-Host "User '$SMB_USER' created and granted access"
 
+    - name: Install Docker client on macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        echo "::group::Installing Docker client on macOS"
+        
+        # Check if Docker is already installed
+        if command -v docker >/dev/null 2>&1; then
+          echo "✅ Docker client is already installed"
+          docker --version
+        else
+          echo "Installing Docker client via Homebrew..."
+        
+          # Check if Homebrew is available
+          if command -v brew >/dev/null 2>&1; then
+            brew install docker
+            echo "✅ Docker client installed successfully"
+            docker --version
+          else
+            echo "::error::Homebrew not found. This action requires Homebrew for Docker installation."
+            exit 1
+          fi
+        fi
+        
+        echo "::endgroup::"
+
     - name: Create SMB user and share on macOS
       if: ${{ inputs.use-remote-share == 'true' && runner.os == 'macOS' }}
       shell: bash
