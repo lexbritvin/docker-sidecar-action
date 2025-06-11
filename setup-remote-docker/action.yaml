@@ -33,7 +33,7 @@ runs:
         
           # Check if Homebrew is available
           if command -v brew >/dev/null 2>&1; then
-            brew install docker
+            brew install --cask docker
             echo "✅ Docker client installed successfully"
             docker --version
           else
@@ -59,13 +59,13 @@ runs:
           SMB_USER="smbuser"
         fi
         
-        SMB_PORT=$(echo $((49152 + RANDOM % 16384)))
+        SMB_PORT=$((49152 + RANDOM % 16384))
         echo "smb_port=$SMB_PORT" >> $GITHUB_OUTPUT
         echo "smb_remote_fwd=$SMB_PORT:localhost:445" >> $GITHUB_OUTPUT
         
         echo "local_path=$LOCAL_PATH" >> $GITHUB_OUTPUT
         echo "mount_path=$MOUNT_PATH" >> $GITHUB_OUTPUT
-        echo "share_name=workspace_share" >> $GITHUB_OUTPUT
+        echo "share_name=workspace_share_$RANDOM" >> $GITHUB_OUTPUT
         echo "share_user=$SMB_USER" >> $GITHUB_OUTPUT
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
 
@@ -305,7 +305,7 @@ runs:
             echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
             echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
             echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
-            echo "::notice::Known hosts loaded from ssh-known-hosts.txt"
+            echo "Known hosts loaded from ssh-known-hosts.txt"
           else
             echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
             echo "::warning::ssh-known-hosts.txt is empty"
@@ -340,9 +340,9 @@ runs:
         echo "docker_endpoint=${DOCKER_HOST#tcp://}" >> $GITHUB_OUTPUT
         echo "docker_port=${DOCKER_PORT}" >> $GITHUB_OUTPUT
 
-        echo "::notice::Docker host configured: $DOCKER_HOST"
-        echo "::notice::TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
-        echo "::notice::SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
+        echo "Docker host configured: $DOCKER_HOST"
+        echo "TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
+        echo "SSH connection details exported for tunnel: $SSH_JUMP_USER@$SSH_JUMP_HOST:$SSH_JUMP_PORT -> $SSH_USER@$SSH_HOST:$SSH_PORT"
 
         echo "::endgroup::"
 
@@ -351,7 +351,7 @@ runs:
       run: |
         # Return early if TLS is not enabled
         if [[ "${DOCKER_TLS_VERIFY}" != "1" ]]; then
-          echo "::notice::TLS verification disabled, skipping certificate setup"
+          echo "TLS verification disabled, skipping certificate setup"
           exit 0
         fi
         
@@ -385,7 +385,7 @@ runs:
           fi
         done
         
-        echo "::notice::Docker TLS certificates configured: ${cert_path}"
+        echo "Docker TLS certificates configured: ${cert_path}"
         echo "::endgroup::"
 
     - name: Forward Docker port and SMB share
@@ -460,7 +460,7 @@ runs:
         fi
         
         echo "::endgroup::"
-        echo "::notice::Remote Docker setup completed successfully"
+        echo "Remote Docker setup completed successfully"
 
     - name: Cleanup temporary files
       shell: bash
@@ -468,4 +468,4 @@ runs:
         # Clean up downloaded artifacts (keep docker-certs for use)
         rm -rf "${{ inputs.docker-connection-artifact-name }}"
         
-        echo "::notice::Temporary files cleaned up"
+        echo "Temporary files cleaned up"
