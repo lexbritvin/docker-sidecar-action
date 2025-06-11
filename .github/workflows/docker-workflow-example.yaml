@@ -72,14 +72,14 @@ jobs:
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
 
-          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
+          echo "private-key-path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
 
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
-          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
+          private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
           use-remote-share: 'true'
 
       - name: Run Docker container with volume mount
@@ -118,14 +118,14 @@ jobs:
           echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
           chmod 600 "$PRIVATE_KEY_PATH"
 
-          echo "private_key_path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
+          echo "private-key-path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
 
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
-          private_key_path: ${{ steps.ssh-config.outputs.private_key_path }}
+          private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
           use-remote-share: 'true'
 
       - name: Run Docker container with volume mount
