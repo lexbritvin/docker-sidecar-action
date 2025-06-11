@@ -324,8 +324,8 @@ runs:
       with:
         host: ${{ steps.ssh.outputs.ssh_jump_host }}
         username: ${{ steps.ssh.outputs.ssh_jump_user }}
-        remote_forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
-        known_hosts: ${{ inputs.ssh-jump-host-key }}
+        remote-forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
+        known-hosts: ${{ inputs.ssh-jump-host-key }}
 
     - name: Prepare connection artifacts
       shell: bash

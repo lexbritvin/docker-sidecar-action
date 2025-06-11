@@ -6,7 +6,7 @@ inputs:
     description: 'Name of the Docker connection artifacts to download'
     default: 'docker-conn-details'
     required: false
-  private_key_path:
+  private-key-path:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
     default: ''
@@ -394,23 +394,23 @@ runs:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
-        private_key_path: ${{ inputs.private_key_path }}
-        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
-        local_forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
-        remote_forwards: "${{ steps.smb_share.outputs.smb_remote_fwd }}" # SMB share to local directory.
-        known_hosts: |
+        private-key-path: ${{ inputs.private-key-path }}
+        jump-hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
+        local-forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
+        remote-forwards: "${{ steps.smb_share.outputs.smb_remote_fwd }}" # SMB share to local directory.
+        known-hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
 
-    - name: Forward Docker port and SMB share
+    - name: Configure SMB share on remote host
       uses: lexbritvin/ssh-port-forward-action@main
       if: ${{ inputs.use-remote-share == 'true' }}
       with:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
-        private_key_path: ${{ inputs.private_key_path }}
-        jump_hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
-        known_hosts: |
+        private-key-path: ${{ inputs.private-key-path }}
+        jump-hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
+        known-hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
         command: |
           set -e
@@ -436,6 +436,8 @@ runs:
           sudo rm '${{ steps.smb_share.outputs.mount_path }}/linux_test.txt'
 
           echo 'CIFS mount successful!'
+        post-command: |
+          sudo umount '${{ steps.smb_share.outputs.mount_path }}'
 
     - name: Verify Docker connection
       shell: bash
