@@ -23,8 +23,8 @@ runs:
     - name: Validate inputs
       shell: bash
       run: |
-        if [ -z "${{ inputs.local-path }}" ]; then
-          echo "::error::local-path input is required"
+        if [ -z "${{ inputs.path }}" ]; then
+          echo "::error::path input is required"
           exit 1
         fi
         if [ -z "${{ inputs.share-name }}" ]; then
@@ -44,15 +44,15 @@ runs:
     - name: Create directory if it doesn't exist
       shell: bash
       run: |
-        mkdir -p "${{ inputs.local-path }}"
-        echo "📁 Directory ensured: ${{ inputs.local-path }}"
+        mkdir -p "${{ inputs.path }}"
+        echo "📁 Directory ensured: ${{ inputs.path }}"
 
     - name: Create SMB user and share on Windows
       if: ${{ runner.os == 'Windows' }}
       shell: powershell
       run: |
         # Get current working directory for the share
-        $SHARE_DIR = "${{ inputs.local-path }}"
+        $SHARE_DIR = "${{ inputs.path }}"
         $SHARE_NAME = "${{ inputs.share-name }}"
         $SMB_USER = "${{ inputs.share-user }}"
         $SMB_PASSWORD = "${{ inputs.share-pass }}"
@@ -114,7 +114,7 @@ runs:
       shell: bash
       run: |
         # Get current working directory for the share
-        SHARE_DIR="${{ inputs.local-path }}"
+        SHARE_DIR="${{ inputs.path }}"
         SHARE_NAME="${{ inputs.share-name }}"
         SMB_USER="${{ inputs.share-user }}"
         SMB_PASSWORD="${{ inputs.share-pass }}"
@@ -265,7 +265,7 @@ runs:
       run: |
         echo "📋 SMB Share Setup Summary:"
         echo "  • Share Name: ${{ inputs.share-name }}"
-        echo "  • Share Path: ${{ inputs.local-path }}"
+        echo "  • Share Path: ${{ inputs.path }}"
         echo "  • SMB User: ${{ inputs.share-user }}"
         echo "  • Operating System: ${{ runner.os }}"
         echo "✅ SMB share setup completed successfully!"

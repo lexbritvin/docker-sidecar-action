@@ -69,9 +69,10 @@ runs:
         echo "share_user=$SMB_USER" >> $GITHUB_OUTPUT
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
 
-    - uses: ${{ format('{0}/../setup-smb-share', env.GITHUB_ACTION_PATH) }}
+    - uses: lexbritvin/docker-sidecar-action/setup-smb-share@main
+      if: ${{ inputs.use-remote-share == 'true' }}
       with:
-        path: ${{ steps.smb_share.outputs.path }}
+        path: ${{ steps.smb_share.outputs.local_path }}
         share-name: ${{ steps.smb_share.outputs.share_name }}
         share-user: ${{ steps.smb_share.outputs.share_user }}
         share-pass: ${{ steps.smb_share.outputs.share_pass }}
