@@ -69,7 +69,7 @@ runs:
         echo "share_user=$SMB_USER" >> $GITHUB_OUTPUT
         echo "share_pass=SecurePass123!" >> $GITHUB_OUTPUT
 
-    - uses: "${{ github.action_path }}/setup-smb-share"
+    - uses: ${{ format('{0}/../setup-smb-share', env.GITHUB_ACTION_PATH) }}
       with:
         path: ${{ steps.smb_share.outputs.path }}
         share-name: ${{ steps.smb_share.outputs.share_name }}
