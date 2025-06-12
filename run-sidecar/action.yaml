@@ -16,10 +16,6 @@ inputs:
   ssh-authorized-keys:
     required: true
     description: 'SSH public keys authorized for remote access'
-  connection-timeout:
-    required: false
-    default: '3600'
-    description: 'Maximum connection lifetime in seconds'
   enable-tls:
     required: false
     default: 'true'
@@ -54,15 +50,15 @@ runs:
       shell: bash
       run: |
         echo "Checking CIFS utilities installation..."
-        
+
         # Check if cifs-utils is already installed
         if command -v mount.cifs &> /dev/null; then
           echo "✅ CIFS utilities already installed"
           exit 0
         fi
-        
+
         echo "Installing CIFS utilities for network file system support..."
-        
+
         # Detect Linux distribution and install
         if command -v apt-get &> /dev/null; then
           # Debian/Ubuntu family

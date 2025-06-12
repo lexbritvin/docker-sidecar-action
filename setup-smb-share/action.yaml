@@ -1,0 +1,275 @@
+name: 'Setup SMB Share'
+description: 'Creates an SMB user and share on Windows and macOS runners'
+
+inputs:
+  path:
+    description: 'Local directory path to share via SMB'
+    required: true
+  share-name:
+    description: 'Name of the SMB share'
+    required: true
+    default: 'shared'
+  share-user:
+    description: 'Username for SMB access'
+    required: true
+    default: 'smbuser'
+  share-pass:
+    description: 'Password for SMB user'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.local-path }}" ]; then
+          echo "::error::local-path input is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.share-name }}" ]; then
+          echo "::error::share-name input is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.share-user }}" ]; then
+          echo "::error::share-user input is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.share-pass }}" ]; then
+          echo "::error::share-pass input is required"
+          exit 1
+        fi
+        echo "✅ All required inputs provided"
+
+    - name: Create directory if it doesn't exist
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.local-path }}"
+        echo "📁 Directory ensured: ${{ inputs.local-path }}"
+
+    - name: Create SMB user and share on Windows
+      if: ${{ runner.os == 'Windows' }}
+      shell: powershell
+      run: |
+        # Get current working directory for the share
+        $SHARE_DIR = "${{ inputs.local-path }}"
+        $SHARE_NAME = "${{ inputs.share-name }}"
+        $SMB_USER = "${{ inputs.share-user }}"
+        $SMB_PASSWORD = "${{ inputs.share-pass }}"
+        
+        Write-Host "🔧 Setting up SMB share on Windows..."
+        Write-Host "Share Directory: $SHARE_DIR"
+        Write-Host "Share Name: $SHARE_NAME"
+        Write-Host "SMB User: $SMB_USER"
+        
+        try {
+          # Create new local user with password on Windows
+          $SecurePassword = ConvertTo-SecureString $SMB_PASSWORD -AsPlainText -Force
+          New-LocalUser -Name $SMB_USER -Password $SecurePassword -FullName "SMB User" -Description "User for SMB sharing" -ErrorAction Stop
+          Write-Host "✅ Local user '$SMB_USER' created successfully"
+        } catch {
+          if ($_.Exception.Message -like "*already exists*") {
+            Write-Host "⚠️ User '$SMB_USER' already exists, continuing..."
+          } else {
+            Write-Host "::error::Failed to create user: $($_.Exception.Message)"
+            exit 1
+          }
+        }
+        
+        try {
+          # Add user to appropriate groups for file sharing
+          Add-LocalGroupMember -Group "Users" -Member $SMB_USER -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Power Users" -Member $SMB_USER -ErrorAction SilentlyContinue
+          Write-Host "✅ User added to required groups"
+        } catch {
+          Write-Host "⚠️ Group membership may already exist: $($_.Exception.Message)"
+        }
+        
+        try {
+          # Create SMB share on current directory
+          New-SmbShare -Name $SHARE_NAME -Path $SHARE_DIR -FullAccess $SMB_USER -ChangeAccess "Everyone" -ErrorAction Stop
+          Write-Host "✅ SMB share '$SHARE_NAME' created successfully"
+        } catch {
+          if ($_.Exception.Message -like "*already exists*") {
+            Write-Host "⚠️ Share '$SHARE_NAME' already exists, continuing..."
+          } else {
+            Write-Host "::error::Failed to create SMB share: $($_.Exception.Message)"
+            exit 1
+          }
+        }
+        
+        try {
+          # Grant full control using icacls
+          icacls $SHARE_DIR /grant "${SMB_USER}:(OI)(CI)F" /T
+          Write-Host "✅ File permissions granted successfully"
+        } catch {
+          Write-Host "::warning::Failed to set file permissions, but continuing..."
+        }
+        
+        Write-Host "🎉 SMB share '$SHARE_NAME' created at path: $SHARE_DIR"
+        Write-Host "👤 User '$SMB_USER' created and granted access"
+
+    - name: Create SMB user and share on macOS
+      if: ${{ runner.os == 'macOS' }}
+      shell: bash
+      run: |
+        # Get current working directory for the share
+        SHARE_DIR="${{ inputs.local-path }}"
+        SHARE_NAME="${{ inputs.share-name }}"
+        SMB_USER="${{ inputs.share-user }}"
+        SMB_PASSWORD="${{ inputs.share-pass }}"
+        
+        echo "🔧 Setting up SMB share on macOS..."
+        echo "Share Directory: $SHARE_DIR"
+        echo "Share Name: $SHARE_NAME"
+        echo "SMB User: $SMB_USER"
+        
+        # Install Samba via Homebrew
+        if command -v brew >/dev/null 2>&1; then
+          echo "📦 Installing Samba via Homebrew..."
+          brew install samba || echo "⚠️ Samba may already be installed"
+        else
+          echo "::error::Homebrew not found. This action requires Homebrew for Samba installation."
+          exit 1
+        fi
+        
+        # Set permissions on the shared directory
+        chmod 755 "$SHARE_DIR"
+        echo "✅ Directory permissions set"
+        
+        # Configure Homebrew Samba paths
+        HOMEBREW_PREFIX=$(brew --prefix)
+        SAMBA_CONF_PATH="$HOMEBREW_PREFIX/etc/smb.conf"
+        SMBPASSWD_PATH="$HOMEBREW_PREFIX/bin/smbpasswd"
+        SMBD_PATH="$HOMEBREW_PREFIX/sbin/samba-dot-org-smbd"
+        TESTPARM_PATH="$HOMEBREW_PREFIX/bin/testparm"
+        
+        # Define Samba variable directory
+        SAMBA_VAR_DIR="$HOMEBREW_PREFIX/var/lib/samba"
+        
+        echo "🔧 Configuring Homebrew Samba..."
+        
+        # Create necessary directories
+        sudo mkdir -p "$SAMBA_VAR_DIR/private"
+        sudo mkdir -p "$SAMBA_VAR_DIR/locks"
+        sudo mkdir -p "/var/log/samba"
+        echo "✅ Samba directories created"
+        
+        # Create a basic smb.conf file
+        sudo tee "$SAMBA_CONF_PATH" > /dev/null << EOF
+        [global]
+        workgroup = WORKGROUP
+        security = user
+        map to guest = bad user
+        dns proxy = no
+        server role = standalone server
+        netbios name = RUNNER
+        
+        # Force SMB 3.0 only - disable older protocols
+        server min protocol = SMB3_00
+        server max protocol = SMB3_11
+        client min protocol = SMB3_00
+        client max protocol = SMB3_11
+        
+        # Disable SMB1 completely
+        server smb encrypt = required
+        smb encrypt = required
+        
+        # Modern SMB 3.0 features
+        server signing = mandatory
+        client signing = mandatory
+        
+        # Use custom paths for Homebrew installation
+        private dir = $SAMBA_VAR_DIR/private
+        lock directory = $SAMBA_VAR_DIR/locks
+        state directory = $SAMBA_VAR_DIR
+        cache directory = $SAMBA_VAR_DIR
+        
+        # Logging
+        log file = /var/log/samba/log.%m
+        max log size = 1000
+        log level = 2
+        
+        # Performance optimizations for SMB 3.0
+        aio read size = 1048576
+        aio write size = 1048576
+        use sendfile = yes
+        
+        [$SHARE_NAME]
+        path = $SHARE_DIR
+        valid users = $SMB_USER
+        read only = no
+        browseable = yes
+        writable = yes
+        guest ok = no
+        create mask = 0755
+        directory mask = 0755
+        force user = $SMB_USER
+        
+        # SMB 3.0 share-level settings
+        encrypt passwords = yes
+        smb encrypt = required
+        EOF
+        
+        echo "✅ Samba configuration file created"
+        
+        # Test the configuration
+        echo "🧪 Testing Samba configuration..."
+        sudo "$TESTPARM_PATH" -s "$SAMBA_CONF_PATH" || echo "⚠️ Configuration has warnings but may still work"
+        
+        # Initialize Samba databases properly
+        echo "🔧 Initializing Samba databases..."
+        sudo chown -R $SMB_USER:staff "$SAMBA_VAR_DIR"
+        sudo chmod -R 755 "$SAMBA_VAR_DIR"
+        sudo chmod -R 600 "$SAMBA_VAR_DIR/private"
+        
+        # Add user to Samba with better error handling
+        echo "👤 Adding user to Samba..."
+        export SMB_CONF_PATH="$SAMBA_CONF_PATH"
+        
+        # Method 1: Try smbpasswd with proper initialization
+        if (echo -e "$SMB_PASSWORD\n$SMB_PASSWORD" | sudo "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -a -s "$SMB_USER") 2>/dev/null; then
+          echo "✅ User added to Samba successfully via smbpasswd"
+        else
+          echo "::error::Failed to set samba password."
+          exit 1
+        fi
+        
+        # Enable the user
+        sudo "$SMBPASSWD_PATH" -c "$SAMBA_CONF_PATH" -e "$SMB_USER" 2>/dev/null || echo "⚠️ User enable attempted"
+        
+        # Start Samba daemon
+        echo "🚀 Starting Samba daemon..."
+        sudo "$SMBD_PATH" -D -s "$SAMBA_CONF_PATH" --option="private dir=$SAMBA_VAR_DIR/private" || echo "⚠️ Samba daemon start attempted"
+        
+        echo "✅ Homebrew Samba configured"
+        
+        # Wait for services to start
+        sleep 5
+        
+        echo "🎉 File sharing setup completed on macOS"
+        
+        # Test if SMB is listening on port 445
+        if netstat -an | grep -q ":445.*LISTEN"; then
+          echo "✅ SMB service is listening on port 445"
+        elif lsof -i :445 2>/dev/null | grep -q LISTEN; then
+          echo "✅ SMB service detected via lsof"
+        else
+          echo "⚠️ SMB service may not be active"
+          echo "🔍 Checking for any SMB processes..."
+          ps aux | grep -i smb | grep -v grep || echo "❌ No SMB processes found"
+        fi
+
+    - name: Verify SMB setup
+      shell: bash
+      run: |
+        echo "📋 SMB Share Setup Summary:"
+        echo "  • Share Name: ${{ inputs.share-name }}"
+        echo "  • Share Path: ${{ inputs.local-path }}"
+        echo "  • SMB User: ${{ inputs.share-user }}"
+        echo "  • Operating System: ${{ runner.os }}"
+        echo "✅ SMB share setup completed successfully!"
+
+branding:
+  icon: 'share-2'
+  color: 'blue'
