@@ -57,7 +57,7 @@ runs:
         $SMB_USER = "${{ inputs.share-user }}"
         $SMB_PASSWORD = "${{ inputs.share-pass }}"
         
-        Write-Host "🔧 Setting up SMB share on Windows..."
+        Write-Host "Setting up SMB share on Windows..."
         Write-Host "Share Directory: $SHARE_DIR"
         Write-Host "Share Name: $SHARE_NAME"
         Write-Host "SMB User: $SMB_USER"
@@ -66,10 +66,10 @@ runs:
           # Create new local user with password on Windows
           $SecurePassword = ConvertTo-SecureString $SMB_PASSWORD -AsPlainText -Force
           New-LocalUser -Name $SMB_USER -Password $SecurePassword -FullName "SMB User" -Description "User for SMB sharing" -ErrorAction Stop
-          Write-Host "✅ Local user '$SMB_USER' created successfully"
+          Write-Host "Local user '$SMB_USER' created successfully"
         } catch {
           if ($_.Exception.Message -like "*already exists*") {
-            Write-Host "⚠️ User '$SMB_USER' already exists, continuing..."
+            Write-Host "User '$SMB_USER' already exists, continuing..."
           } else {
             Write-Host "::error::Failed to create user: $($_.Exception.Message)"
             exit 1
@@ -80,18 +80,18 @@ runs:
           # Add user to appropriate groups for file sharing
           Add-LocalGroupMember -Group "Users" -Member $SMB_USER -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Power Users" -Member $SMB_USER -ErrorAction SilentlyContinue
-          Write-Host "✅ User added to required groups"
+          Write-Host "User added to required groups"
         } catch {
-          Write-Host "⚠️ Group membership may already exist: $($_.Exception.Message)"
+          Write-Host "Group membership may already exist: $($_.Exception.Message)"
         }
         
         try {
           # Create SMB share on current directory
           New-SmbShare -Name $SHARE_NAME -Path $SHARE_DIR -FullAccess $SMB_USER -ChangeAccess "Everyone" -ErrorAction Stop
-          Write-Host "✅ SMB share '$SHARE_NAME' created successfully"
+          Write-Host "SMB share '$SHARE_NAME' created successfully"
         } catch {
           if ($_.Exception.Message -like "*already exists*") {
-            Write-Host "⚠️ Share '$SHARE_NAME' already exists, continuing..."
+            Write-Host "Share '$SHARE_NAME' already exists, continuing..."
           } else {
             Write-Host "::error::Failed to create SMB share: $($_.Exception.Message)"
             exit 1
@@ -101,13 +101,13 @@ runs:
         try {
           # Grant full control using icacls
           icacls $SHARE_DIR /grant "${SMB_USER}:(OI)(CI)F" /T
-          Write-Host "✅ File permissions granted successfully"
+          Write-Host "File permissions granted successfully"
         } catch {
           Write-Host "::warning::Failed to set file permissions, but continuing..."
         }
         
-        Write-Host "🎉 SMB share '$SHARE_NAME' created at path: $SHARE_DIR"
-        Write-Host "👤 User '$SMB_USER' created and granted access"
+        Write-Host "SMB share '$SHARE_NAME' created at path: $SHARE_DIR"
+        Write-Host "User '$SMB_USER' created and granted access"
 
     - name: Create SMB user and share on macOS
       if: ${{ runner.os == 'macOS' }}
