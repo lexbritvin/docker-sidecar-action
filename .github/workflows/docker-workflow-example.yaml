@@ -43,10 +43,10 @@ jobs:
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
           ssh-server-authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
-          ssh-jump-user: ${{ env.SSH_JUMP_USER }}
-          ssh-jump-forward: ${{ env.SSH_JUMP_FORWARD }}
           ssh-jump-host: ${{ env.SSH_JUMP_SERVER }}
+          ssh-jump-user: ${{ env.SSH_JUMP_USER }}
           ssh-jump-host-keys: ${{ env.SSH_JUMP_HOST_KEY }}
+          ssh-jump-forward: ${{ env.SSH_JUMP_FORWARD }}
 
       - name: ⚡ Wait for related jobs
         uses: lexbritvin/wait-for-action@main

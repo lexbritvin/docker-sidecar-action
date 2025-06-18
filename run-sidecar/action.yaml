@@ -321,6 +321,7 @@ runs:
         ssh-jump-user: ${{ inputs.ssh-jump-user }}
         ssh-jump-host: ${{ inputs.ssh-jump-host }}
         ssh-jump-port: ${{ inputs.ssh-jump-port }}
+        ssh-jump-host-keys: ${{ inputs.ssh-jump-host-keys }}
         ssh-jump-forward: ${{ inputs.ssh-jump-forward }}
         ssh-jump-private-key: ${{ inputs.ssh-jump-private-key }}
         ssh-jump-private-key-path: ${{ inputs.ssh-jump-private-key-path }}
