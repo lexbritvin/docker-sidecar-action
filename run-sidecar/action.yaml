@@ -335,7 +335,7 @@ runs:
         SSH_PORT: ${{ steps.ssh-server.outputs.ssh-port }}
         SSH_HOST_KEYS: "${{ steps.ssh-server.outputs.ssh-host-keys }}"
         KNOWN_HOSTS: |
-          ${{ inputs.ssh-jump-host-key }}
+          ${{ inputs.ssh-jump-host-keys }}
       run: |
         echo "Preparing connection artifacts..."
         
