@@ -6,6 +6,10 @@ inputs:
     description: 'Name of the Docker connection artifacts to download'
     default: 'docker-conn-details'
     required: false
+  private-key:
+    description: 'SSH private key content for sidecar ssh authentication'
+    required: false
+    default: ''
   private-key-path:
     description: 'Path to the SSH private key file for sidecar ssh authentication'
     required: false
@@ -210,6 +214,7 @@ runs:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
+        private-key: ${{ inputs.private-key }}
         private-key-path: ${{ inputs.private-key-path }}
         jump-hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
         local-forwards: "${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}" # Docker tcp port.
@@ -224,6 +229,7 @@ runs:
         host: ${{ steps.connection.outputs.ssh_host }}
         port: ${{ steps.connection.outputs.ssh_port }}
         username: ${{ steps.connection.outputs.ssh_user }}
+        private-key: ${{ inputs.private-key }}
         private-key-path: ${{ inputs.private-key-path }}
         jump-hosts: "${{ steps.connection.outputs.ssh_jump_string }}"
         known-hosts: |

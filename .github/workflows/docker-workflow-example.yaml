@@ -5,6 +5,8 @@ on:
     branches: [ main ]
 
 env:
+  SSH_JUMP_USER: ':generate'
+  SSH_JUMP_FORWARD: ':generate'
   SSH_JUMP_SERVER: ssh-j.com
   SSH_JUMP_HOST_KEY: |
     ssh-j.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIiyFQuTwegicQ+8w7dLA7A+4JMZkCk8TLWrKPklWcRt
@@ -40,9 +42,10 @@ jobs:
       - name: Run Linux Docker sidecar
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
+          ssh-jump-user: ${{ env.SSH_JUMP_USER }}
+          ssh-jump-forward: ${{ env.SSH_JUMP_FORWARD }}
           ssh-jump-host: ${{ env.SSH_JUMP_SERVER }}
-          ssh-jump-host-key: ${{ env.SSH_JUMP_HOST_KEY }}
-          ssh-authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
+          ssh-jump-host-keys: ${{ env.SSH_JUMP_HOST_KEY }}
 
       - name: ⚡ Wait for related jobs
         uses: lexbritvin/wait-for-action@main
@@ -60,26 +63,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH Config
-        id: ssh-config
-        shell: bash
-        env:
-          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
-        run: |
-          # Create SSH config directory if it doesn't exist
-          mkdir -p $HOME/.ssh
-          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
-          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
-          chmod 600 "$PRIVATE_KEY_PATH"
-
-          echo "private-key-path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
-
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
-          private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
+          private-key: ${{ needs.client-ssh-key.outputs.private-key }}
           use-remote-share: 'true'
 
       - name: Run Docker container with volume mount
@@ -106,26 +95,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH Config
-        id: ssh-config
-        shell: bash
-        env:
-          PRIVATE_KEY: ${{ needs.client-ssh-key.outputs.private-key }}
-        run: |
-          # Create SSH config directory if it doesn't exist
-          mkdir -p $HOME/.ssh
-          PRIVATE_KEY_PATH="$HOME/.ssh/id_ed25519_tmp"
-          echo "$PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
-          chmod 600 "$PRIVATE_KEY_PATH"
-
-          echo "private-key-path=$PRIVATE_KEY_PATH" >> $GITHUB_OUTPUT
-
       # Set up the Docker sidecar environment
       - name: Set up Remote Docker
         id: docker-setup
         uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
         with:
-          private-key-path: ${{ steps.ssh-config.outputs.private-key-path }}
+          private-key: ${{ needs.client-ssh-key.outputs.private-key }}
           use-remote-share: 'true'
 
       - name: Run Docker container with volume mount

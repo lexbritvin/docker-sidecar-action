@@ -3,19 +3,74 @@ description: 'Sets up secure remote Docker daemon access through SSH tunneling w
 author: 'Aleksandr Britvin'
 
 inputs:
+  ssh-host-alias:
+    required: false
+    description: |
+      SSH hostname alias to used in outputs. 
+      When left empty, this will be automatically set in two cases: 
+      1. if `ssh-jump-forward` is set to `:generate`, a hostname will be generated inside jump-host 
+      2. if the jump host provides a direct connection hostname, that will be used instead
+    default: ''
+
+  ssh-server-user:
+    description: 'SSH username for the server and authorized keys. Use :current to get the current user name'
+    required: false
+    default: ':current'
+
+  ssh-server-port:
+    description: 'SSH server port'
+    required: false
+    default: '2222'
+
+  ssh-server-authorized-keys:
+    description: 'Authorized public keys (one per line) for SSH Server authentication'
+    required: false
+
+  ssh-jump-user:
+    required: false
+    default: ''
+    description: 'SSH jump host username. Use :generate to create a unique username automatically. See `ssh-jump-forward` parameter.'
+
   ssh-jump-host:
-    required: true
-    description: 'SSH jump host server for tunneling Docker daemon access'
+    required: false
+    default: ''
+    description: 'SSH jump host server for tunneling SSH server access'
+
   ssh-jump-port:
     required: false
     default: '22'
-    description: 'SSH jump host port for tunneling Docker daemon access'
-  ssh-jump-host-key:
-    required: true
-    description: 'SSH host key for jump server verification (known_hosts format)'
-  ssh-authorized-keys:
-    required: true
-    description: 'SSH public keys authorized for remote access'
+    description: 'SSH jump host port for tunneling SSH server access'
+
+  ssh-jump-forward:
+    required: false
+    description: |
+      Port forwarding configuration for jump host:
+      - '0' for random port and public access (serveo, pinggy, or arbitrary server)
+      - ':generate' (ssh-j, serveo) to use a generated host alias
+      - Custom format like 'myhost:2222' for specific host and port
+      - Empty to disable jump host when other connection methods are available
+    default: ''
+
+  ssh-jump-private-key:
+    required: false
+    default: ''
+    description: 'Private key content for authenticating with the SSH jump host'
+
+  ssh-jump-private-key-path:
+    required: false
+    default: ''
+    description: 'Private key path for authenticating with the SSH jump host'
+
+  ssh-jump-host-keys:
+    required: false
+    description: 'SSH host keys for jump server verification (known_hosts format)'
+    default: ''
+
+  ssh-jump-extra-flags:
+    description: 'Additional SSH flags for jump host connection'
+    required: false
+    default: ''
+
   enable-tls:
     required: false
     default: 'true'
@@ -34,17 +89,19 @@ runs:
   steps:
     - name: Validate Linux environment
       shell: bash
+      env:
+        SSH_HOST_ALIAS: "${{ inputs.ssh-host-alias }}"
+        SSH_JUMP_FORWARD: "${{ inputs.ssh-jump-forward }}"
       run: |
         if [[ "$RUNNER_OS" != "Linux" ]]; then
           echo "::error::This action requires a Linux runner environment"
           exit 1
         fi
-
-    - name: Configure SSH daemon
-      id: configure-ssh
-      uses: lexbritvin/setup-sshd-action@main
-      with:
-        authorized-keys: ${{ inputs.ssh-authorized-keys }}
+        
+        if [[ -z "$SSH_JUMP_FORWARD" && -z "$SSH_HOST_ALIAS" ]]; then
+          echo "Specify `ssh-host-alias` or `ssh-jump-forward`.
+          exit 1
+        fi
 
     - name: Install network file system utilities
       shell: bash
@@ -261,75 +318,64 @@ runs:
         DOCKER_CERT_PATH=$(pwd)/docker-client-certs
         EOF
 
-    - name: Prepare SSH connection details
-      id: ssh
-      shell: bash
-      run: |
-        # Get SSH daemon details from configure-ssh step
-        SSH_HOST=${{ steps.configure-ssh.outputs.hostname }}
-        SSH_PORT=${{ steps.configure-ssh.outputs.port }}
-        SSH_USER=${{ steps.configure-ssh.outputs.username }}
-        SSH_JUMP_HOST=${{ inputs.ssh-jump-host }}
-        SSH_JUMP_PORT=${{ inputs.ssh-jump-port }}
-        SSH_JUMP_USER="gh-runner-${{ github.job }}-${{ github.run_id }}"
-
-        echo "ssh_host=$SSH_HOST" >> $GITHUB_OUTPUT
-        echo "ssh_port=$SSH_PORT" >> $GITHUB_OUTPUT
-        echo "ssh_user=$SSH_USER" >> $GITHUB_OUTPUT
-        echo "ssh_jump_host=$SSH_JUMP_HOST" >> $GITHUB_OUTPUT
-        echo "ssh_jump_port=$SSH_JUMP_PORT" >> $GITHUB_OUTPUT
-        echo "ssh_jump_user=$SSH_JUMP_USER" >> $GITHUB_OUTPUT
-
-        # Create SSH connection details
-        cat > ssh-connection-details.env <<EOF
-        SSH_HOST=$SSH_JUMP_USER
-        SSH_PORT=$SSH_PORT
-        SSH_USER=$SSH_USER
-        SSH_JUMP_HOST=$SSH_JUMP_HOST
-        SSH_JUMP_PORT=$SSH_JUMP_PORT
-        SSH_JUMP_USER=$SSH_JUMP_USER
-        EOF
-
-        echo "SSH connection details exported:"
-        cat ssh-connection-details.env
-        
-        # Process host keys into known_hosts format
-        HOST_KEYS="${{ steps.configure-ssh.outputs.host-keys }}"
-        KNOWN_HOSTS="${{ inputs.ssh-jump-host-key }}"$'\n'
-
-        if [[ -n "$HOST_KEYS" ]]; then
-          # Process each line of host keys
-          while IFS= read -r key_line; do
-            if [[ -n "$key_line" ]]; then
-              # Format: [hostname]:port key_type key_data
-              if [[ "$SSH_PORT" != "22" ]]; then
-                KNOWN_HOSTS="${KNOWN_HOSTS}[$SSH_JUMP_USER]:$SSH_PORT $key_line"$'\n'
-              else
-                KNOWN_HOSTS="${KNOWN_HOSTS}$SSH_JUMP_USER $key_line"$'\n'
-              fi
-            fi
-          done <<< "$HOST_KEYS"
-        fi
-
-        # Remove trailing newline and save known_hosts to a separate file
-        echo "$(echo -n "$KNOWN_HOSTS")" > ssh-known-hosts.txt
-
-    - name: Establish SSH tunnel
-      id: establish-tunnel
-      uses: lexbritvin/ssh-port-forward-action@main
+    - name: Expose SSH server
+      id: ssh-server
+      uses: lexbritvin/ssh-debug-action@main
       with:
-        host: ${{ steps.ssh.outputs.ssh_jump_host }}
-        username: ${{ steps.ssh.outputs.ssh_jump_user }}
-        remote-forwards: "${{ steps.ssh.outputs.ssh_jump_user }}:${{ steps.ssh.outputs.ssh_port }}:${{ steps.ssh.outputs.ssh_host }}:${{ steps.ssh.outputs.ssh_port }}"
-        known-hosts: ${{ inputs.ssh-jump-host-key }}
+        ssh-host-alias: ${{ inputs.ssh-host-alias }}
+        ssh-server-user: ${{ inputs.ssh-server-user }}
+        ssh-server-port: ${{ inputs.ssh-server-port }}
+        ssh-server-authorized-keys: ${{ inputs.ssh-server-authorized-keys }}
+        ssh-jump-user: ${{ inputs.ssh-jump-user }}
+        ssh-jump-host: ${{ inputs.ssh-jump-host }}
+        ssh-jump-port: ${{ inputs.ssh-jump-port }}
+        ssh-jump-forward: ${{ inputs.ssh-jump-forward }}
+        ssh-jump-private-key: ${{ inputs.ssh-jump-private-key }}
+        ssh-jump-private-key-path: ${{ inputs.ssh-jump-private-key-path }}
+        wait-for-file: ''
+        display-help-message: 'false'
 
     - name: Prepare connection artifacts
       shell: bash
+      env:
+        SSH_HOST: ${{ steps.ssh-server.outputs.ssh-host }}
+        SSH_PORT: ${{ steps.ssh-server.outputs.ssh-port }}
+        SSH_HOST_KEYS: "${{ steps.ssh-server.outputs.ssh-host-keys }}"
+        KNOWN_HOSTS: |
+          ${{ inputs.ssh-jump-host-key }}
       run: |
         echo "Preparing connection artifacts..."
         
         # Create connection bundle directory
         mkdir -p "${{ inputs.docker-connection-artifact-name }}"
+        
+        # Create SSH connection details
+        cat > ssh-connection-details.env <<EOF
+        SSH_HOST=$SSH_HOST
+        SSH_PORT=$SSH_PORT
+        SSH_USER=${{ steps.ssh-server.outputs.ssh-user }}
+        SSH_JUMP_HOST=${{ steps.ssh-server.outputs.ssh-jump-host }}
+        SSH_JUMP_PORT=${{ steps.ssh-server.outputs.ssh-jump-port }}
+        SSH_JUMP_USER=${{ steps.ssh-server.outputs.ssh-jump-user }}
+        EOF
+        
+        # Process host keys into known_hosts format
+        if [[ -n "$SSH_HOST_KEYS" ]]; then
+          # Process each line of host keys
+          while IFS= read -r key_line; do
+            if [[ -n "$key_line" ]]; then
+              # Format: [hostname]:port key_type key_data
+              if [[ "$SSH_PORT" != "22" ]]; then
+                KNOWN_HOSTS="${KNOWN_HOSTS}[$SSH_HOST]:$SSH_PORT $key_line"$'\n'
+              else
+                KNOWN_HOSTS="${KNOWN_HOSTS}$SSH_HOST $key_line"$'\n'
+              fi
+            fi
+          done <<< "$SSH_HOST_KEYS"
+        fi
+
+        # Remove trailing newline and save known_hosts to a separate file
+        echo "$(echo -n "$KNOWN_HOSTS")" > ssh-known-hosts.txt
         
         # Add connection configuration files
         cp docker-connection-details.env "${{ inputs.docker-connection-artifact-name }}/"
