@@ -89,17 +89,9 @@ runs:
   steps:
     - name: Validate Linux environment
       shell: bash
-      env:
-        SSH_HOST_ALIAS: "${{ inputs.ssh-host-alias }}"
-        SSH_JUMP_FORWARD: "${{ inputs.ssh-jump-forward }}"
       run: |
         if [[ "$RUNNER_OS" != "Linux" ]]; then
           echo "::error::This action requires a Linux runner environment"
-          exit 1
-        fi
-        
-        if [[ -z "$SSH_JUMP_FORWARD" && -z "$SSH_HOST_ALIAS" ]]; then
-          echo "Specify `ssh-host-alias` or `ssh-jump-forward`.
           exit 1
         fi
 
