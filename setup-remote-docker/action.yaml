@@ -221,6 +221,7 @@ runs:
         remote-forwards: "${{ steps.smb_share.outputs.smb_remote_fwd }}" # SMB share to local directory.
         known-hosts: |
           ${{ steps.connection.outputs.extracted_known_hosts }}
+        extra-flags: '-vvv'
 
     - name: Configure SMB share on remote host
       uses: lexbritvin/ssh-port-forward-action@main
