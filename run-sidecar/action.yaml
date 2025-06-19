@@ -325,6 +325,7 @@ runs:
         ssh-jump-forward: ${{ inputs.ssh-jump-forward }}
         ssh-jump-private-key: ${{ inputs.ssh-jump-private-key }}
         ssh-jump-private-key-path: ${{ inputs.ssh-jump-private-key-path }}
+        ssh-jump-extra-flags: ${{ inputs.ssh-jump-extra-flags }}
         wait-for-file: ''
         display-help-message: 'false'
 
