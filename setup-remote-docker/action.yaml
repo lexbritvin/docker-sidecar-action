@@ -18,6 +18,10 @@ inputs:
     description: 'Enable SMB share mounting for file sharing between local and remote environments'
     required: false
     default: 'false'
+  working-directory:
+    description: 'Working directory path to be used for smb share configuration.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -62,8 +66,9 @@ runs:
     # ===================================================================
     - name: Configure SMB share parameters
       shell: bash
-      id: smb_share
+      id: smb-share
       if: inputs.use-remote-share == 'true'
+      working-directory: ${{ inputs.working-directory }}
       run: |
         echo "::group::📁 Configuring SMB share parameters"
         
@@ -87,13 +92,13 @@ runs:
         
         # Export configuration to outputs
         {
-          echo "smb_port=$SMB_PORT"
-          echo "smb_remote_fwd=$SMB_PORT:localhost:445"
-          echo "local_path=$LOCAL_PATH"
-          echo "mount_path=$MOUNT_PATH"
-          echo "share_name=$SHARE_NAME"
-          echo "share_user=$SMB_USER"
-          echo "share_pass=$SHARE_PASS"
+          echo "smb-port=$SMB_PORT"
+          echo "smb-remote-fwd=$SMB_PORT:localhost:445"
+          echo "local-path=$LOCAL_PATH"
+          echo "mount-path=$MOUNT_PATH"
+          echo "share-name=$SHARE_NAME"
+          echo "share-user=$SMB_USER"
+          echo "share-pass=$SHARE_PASS"
         } >> $GITHUB_OUTPUT
         
         echo "📋 SMB Configuration:"
@@ -110,10 +115,10 @@ runs:
       uses: lexbritvin/smb-share-action@v1
       if: inputs.use-remote-share == 'true'
       with:
-        path: ${{ steps.smb_share.outputs.local_path }}
-        share-name: ${{ steps.smb_share.outputs.share_name }}
-        share-user: ${{ steps.smb_share.outputs.share_user }}
-        share-pass: ${{ steps.smb_share.outputs.share_pass }}
+        path: ${{ steps.smb-share.outputs.local-path }}
+        share-name: ${{ steps.smb-share.outputs.share-name }}
+        share-user: ${{ steps.smb-share.outputs.share-user }}
+        share-pass: ${{ steps.smb-share.outputs.share-pass }}
 
     # ===================================================================
     # STEP 3: Wait for Docker Sidecar and Download Artifacts
@@ -177,16 +182,16 @@ runs:
         if [[ -f "$KNOWN_HOSTS_FILE" ]]; then
           KNOWN_HOSTS_CONTENT=$(cat "$KNOWN_HOSTS_FILE")
           if [[ -n "$KNOWN_HOSTS_CONTENT" ]]; then
-            echo "extracted_known_hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
+            echo "extracted-known-hosts<<KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
             echo "$KNOWN_HOSTS_CONTENT" >> $GITHUB_OUTPUT
             echo "KNOWN_HOSTS_OUTPUT_EOF" >> $GITHUB_OUTPUT
             echo "✅ Known hosts loaded successfully"
           else
-            echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+            echo "extracted-known-hosts=" >> $GITHUB_OUTPUT
             echo "⚠️ ssh-known-hosts.txt is empty"
           fi
         else
-          echo "extracted_known_hosts=" >> $GITHUB_OUTPUT
+          echo "extracted-known-hosts=" >> $GITHUB_OUTPUT
           echo "⚠️ ssh-known-hosts.txt not found - SSH host verification may fail"
         fi
 
@@ -203,24 +208,20 @@ runs:
 
         # Export SSH connection details
         {
-          echo "ssh_host=$SSH_HOST"
-          echo "ssh_port=$SSH_PORT"
-          echo "ssh_user=$SSH_USER"
+          echo "ssh-host=$SSH_HOST"
+          echo "ssh-port=$SSH_PORT"
+          echo "ssh-user=$SSH_USER"
         } >> $GITHUB_OUTPUT
         
         # Build SSH jump host string
-        ssh_jump_string=""
+        SSH_JUMP_STRING=""
         if [[ -n "$SSH_JUMP_HOST" ]]; then
-          ssh_jump_string="$SSH_JUMP_HOST"
-          if [[ -n "$SSH_JUMP_USER" ]]; then
-            ssh_jump_string="${SSH_JUMP_USER}@${ssh_jump_string}"
-          fi
-          if [[ -n "$SSH_JUMP_PORT" ]]; then
-            ssh_jump_string="${ssh_jump_string}:${SSH_JUMP_PORT}"
-          fi
-          echo "🔗 Jump host configured: $ssh_jump_string"
+          SSH_JUMP_STRING="$SSH_JUMP_HOST"
+          [[ -n "$SSH_JUMP_USER" ]] && SSH_JUMP_STRING="${SSH_JUMP_USER}@${SSH_JUMP_STRING}"
+          [[ -n "$SSH_JUMP_PORT" ]] && SSH_JUMP_STRING="${SSH_JUMP_STRING}:${SSH_JUMP_PORT}"
+          echo "🔗 Jump host configured: $SSH_JUMP_STRING"
         fi
-        echo "ssh_jump_string=$ssh_jump_string" >> $GITHUB_OUTPUT
+        echo "ssh-jump-string=$SSH_JUMP_STRING" >> $GITHUB_OUTPUT
 
         # Export Docker configuration to environment
         {
@@ -229,10 +230,10 @@ runs:
         } >> $GITHUB_ENV
 
         # Export Docker connection details
-        docker_endpoint="${DOCKER_HOST#tcp://}"  # Remove tcp:// prefix
+        DOCKER_ENDPOINT="${DOCKER_HOST#tcp://}"  # Remove tcp:// prefix
         {
-          echo "docker_endpoint=$docker_endpoint"
-          echo "docker_port=$DOCKER_PORT"
+          echo "docker-endpoint=$DOCKER_ENDPOINT"
+          echo "docker-port=$DOCKER_PORT"
         } >> $GITHUB_OUTPUT
 
         # Log configuration summary
@@ -240,8 +241,8 @@ runs:
         echo "  • Docker host: $DOCKER_HOST"
         echo "  • TLS verification: ${DOCKER_TLS_VERIFY:-disabled}"
         echo "  • SSH target: $SSH_USER@$SSH_HOST:$SSH_PORT"
-        if [[ -n "$ssh_jump_string" ]]; then
-          echo "  • SSH jump host: $ssh_jump_string"
+        if [[ -n "$SSH_JUMP_STRING" ]]; then
+          echo "  • SSH jump host: $SSH_JUMP_STRING"
         fi
 
         echo "::endgroup::"
@@ -370,16 +371,16 @@ runs:
     - name: Establish SSH tunnels for Docker and SMB
       uses: lexbritvin/ssh-action@v1
       with:
-        host: ${{ steps.connection.outputs.ssh_host }}
-        port: ${{ steps.connection.outputs.ssh_port }}
-        username: ${{ steps.connection.outputs.ssh_user }}
+        host: ${{ steps.connection.outputs.ssh-host }}
+        port: ${{ steps.connection.outputs.ssh-port }}
+        username: ${{ steps.connection.outputs.ssh-user }}
         private-key: ${{ inputs.private-key }}
         private-key-path: ${{ inputs.private-key-path }}
-        jump-hosts: ${{ steps.connection.outputs.ssh_jump_string }}
-        local-forwards: ${{ steps.connection.outputs.docker_port }}:${{ steps.connection.outputs.docker_endpoint }}
-        remote-forwards: ${{ steps.smb_share.outputs.smb_remote_fwd }}
+        jump-hosts: ${{ steps.connection.outputs.ssh-jump-string }}
+        local-forwards: ${{ steps.connection.outputs.docker-port }}:${{ steps.connection.outputs.docker-endpoint }}
+        remote-forwards: ${{ steps.smb-share.outputs.smb-remote-fwd }}
         known-hosts: |
-          ${{ steps.connection.outputs.extracted_known_hosts }}
+          ${{ steps.connection.outputs.extracted-known-hosts }}
 
     # ===================================================================
     # STEP 7: Configure Remote SMB Mount (if enabled)
@@ -388,24 +389,24 @@ runs:
       uses: lexbritvin/ssh-action@v1
       if: inputs.use-remote-share == 'true'
       with:
-        host: ${{ steps.connection.outputs.ssh_host }}
-        port: ${{ steps.connection.outputs.ssh_port }}
-        username: ${{ steps.connection.outputs.ssh_user }}
+        host: ${{ steps.connection.outputs.ssh-host }}
+        port: ${{ steps.connection.outputs.ssh-port }}
+        username: ${{ steps.connection.outputs.ssh-user }}
         private-key: ${{ inputs.private-key }}
         private-key-path: ${{ inputs.private-key-path }}
-        jump-hosts: ${{ steps.connection.outputs.ssh_jump_string }}
+        jump-hosts: ${{ steps.connection.outputs.ssh-jump-string }}
         known-hosts: |
-          ${{ steps.connection.outputs.extracted_known_hosts }}
+          ${{ steps.connection.outputs.extracted-known-hosts }}
         command: |
           set -e
           
           echo "Setting up SMB mount on remote Linux host"
           
-          MOUNT_PATH='${{ steps.smb_share.outputs.mount_path }}'
-          SHARE_NAME='${{ steps.smb_share.outputs.share_name }}'
-          SHARE_USER='${{ steps.smb_share.outputs.share_user }}'
-          SHARE_PASS='${{ steps.smb_share.outputs.share_pass }}'
-          SMB_PORT='${{ steps.smb_share.outputs.smb_port }}'
+          MOUNT_PATH='${{ steps.smb-share.outputs.mount-path }}'
+          SHARE_NAME='${{ steps.smb-share.outputs.share-name }}'
+          SHARE_USER='${{ steps.smb-share.outputs.share-user }}'
+          SHARE_PASS='${{ steps.smb-share.outputs.share-pass }}'
+          SMB_PORT='${{ steps.smb-share.outputs.smb-port }}'
           
           echo "Creating mount point: $MOUNT_PATH"
           sudo mkdir -p "$MOUNT_PATH"
@@ -452,7 +453,7 @@ runs:
         # Cleanup SMB mount after use
         post-command: |
           echo "Cleaning up SMB mount"
-          if sudo umount '${{ steps.smb_share.outputs.mount_path }}' 2>/dev/null; then
+          if sudo umount '${{ steps.smb-share.outputs.mount-path }}' 2>/dev/null; then
             echo "SMB mount unmounted successfully"
           else
             echo "Failed to unmount SMB share (may already be unmounted)"
