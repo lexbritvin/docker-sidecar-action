@@ -470,7 +470,7 @@ runs:
     # ============================================================================
     - name: 🔑 Expose SSH server for remote access
       id: ssh-server
-      uses: lexbritvin/ssh-session-action@main
+      uses: lexbritvin/ssh-session-action@v1
       with:
         ssh-server-host: ${{ inputs.ssh-server-host }}
         ssh-server-user: ${{ inputs.ssh-server-user }}
