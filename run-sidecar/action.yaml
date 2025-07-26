@@ -81,6 +81,22 @@ inputs:
     required: false
     default: ''
 
+  # Bore Tunneling Configuration
+  use-bore:
+    description: 'Use bore tunneling instead of SSH port forwarding for exposing the SSH server'
+    required: false
+    default: 'false'
+
+  bore-server:
+    description: 'Bore server address (e.g., bore.pub:2200). Required when use-bore is true'
+    required: false
+    default: 'bore.pub'
+
+  bore-secret:
+    description: 'Secret key for bore server authentication. Optional but recommended for security'
+    required: false
+    default: ''
+
   # Docker TLS Configuration
   enable-tls:
     required: false
@@ -454,7 +470,7 @@ runs:
     # ============================================================================
     - name: 🔑 Expose SSH server for remote access
       id: ssh-server
-      uses: lexbritvin/ssh-session-action@v1
+      uses: lexbritvin/ssh-session-action@main
       with:
         ssh-server-host: ${{ inputs.ssh-server-host }}
         ssh-server-user: ${{ inputs.ssh-server-user }}
@@ -468,6 +484,9 @@ runs:
         ssh-jump-private-key: ${{ inputs.ssh-jump-private-key }}
         ssh-jump-private-key-path: ${{ inputs.ssh-jump-private-key-path }}
         ssh-jump-extra-flags: ${{ inputs.ssh-jump-extra-flags }}
+        use-bore: ${{ inputs.use-bore }}
+        bore-server: ${{ inputs.bore-server }}
+        bore-secret: ${{ inputs.bore-secret }}
         wait-file: ''
         display-help-message: 'false'
 

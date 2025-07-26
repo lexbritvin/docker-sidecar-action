@@ -4,13 +4,6 @@ on:
   push:
     branches: [ main ]
 
-env:
-  SSH_JUMP_USER: ':generate'
-  SSH_JUMP_FORWARD: ':generate'
-  SSH_JUMP_SERVER: ssh-j.com
-  SSH_JUMP_HOST_KEYS: |
-    ssh-j.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIiyFQuTwegicQ+8w7dLA7A+4JMZkCk8TLWrKPklWcRt
-
 jobs:
   client-ssh-key:
     name: Generate SSH Key
@@ -42,10 +35,7 @@ jobs:
         uses: lexbritvin/docker-sidecar-action/run-sidecar@main
         with:
           ssh-server-authorized-keys: ${{ needs.client-ssh-key.outputs.public-key }}
-          ssh-jump-host: ${{ env.SSH_JUMP_SERVER }}
-          ssh-jump-user: ${{ env.SSH_JUMP_USER }}
-          ssh-jump-host-keys: ${{ env.SSH_JUMP_HOST_KEYS }}
-          ssh-jump-forward: ${{ env.SSH_JUMP_FORWARD }}
+          use-bore: 'true'
 
       - name: ⚡ Wait for related jobs
         uses: lexbritvin/wait-action@v1
