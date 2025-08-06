@@ -477,7 +477,8 @@ runs:
         echo "🔌 Testing Docker daemon connectivity..."
         
         # First, test basic connectivity
-        if docker version > /dev/null 2>&1; then
+        TMP_OUT="$RUNNER_TEMP/docker_version.out"
+        if docker version > "$TMP_OUT" 2>&1; then
           echo "✅ Docker connection established successfully"
         
           # Get detailed version information
@@ -503,7 +504,7 @@ runs:
         
         else
           echo "❌ Failed to connect to Docker daemon"
-          echo "Connection timeout after 30 seconds"
+          cat "$TMP_OUT"
           echo "Please verify:"
           echo "  • Docker sidecar is running and accessible"
           echo "  • SSH tunnel is properly established"
