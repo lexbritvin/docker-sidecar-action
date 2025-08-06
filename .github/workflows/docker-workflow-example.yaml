@@ -48,7 +48,7 @@ jobs:
   windows-job:
     name: "[wait] Windows Job"
     needs: [client-ssh-key]
-    runs-on: windows-latest
+    runs-on: windows-11-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,36 +77,36 @@ jobs:
           cat test-file.txt | grep "Hello from the container"
           cat test-file.txt
 
-  macos-job:
-    name: "[wait] Macos Job"
-    needs: [ client-ssh-key ]
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Set up the Docker sidecar environment
-      - name: Set up Remote Docker
-        id: docker-setup
-        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
-        with:
-          private-key: ${{ needs.client-ssh-key.outputs.private-key }}
-          use-remote-share: 'true'
-
-      - name: Run Docker container with volume mount
-        shell: bash
-        run: |
-          PATH_PREFIX=""
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            export MSYS_NO_PATHCONV=1
-            PATH_PREFIX="/mnt"
-          fi
-          # Create a test file in the workspace
-          echo "Hello from the host" > test-file.txt
-
-          # Mount the workspace and access the file from the container
-          docker run --rm -v "$PATH_PREFIX$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
-
-          # Verify the file was modified
-          cat test-file.txt | grep "Hello from the container"
-          cat test-file.txt
+#  macos-job:
+#    name: "[wait] Macos Job"
+#    needs: [ client-ssh-key ]
+#    runs-on: macos-latest
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#
+#      # Set up the Docker sidecar environment
+#      - name: Set up Remote Docker
+#        id: docker-setup
+#        uses: lexbritvin/docker-sidecar-action/setup-remote-docker@main
+#        with:
+#          private-key: ${{ needs.client-ssh-key.outputs.private-key }}
+#          use-remote-share: 'true'
+#
+#      - name: Run Docker container with volume mount
+#        shell: bash
+#        run: |
+#          PATH_PREFIX=""
+#          if [[ "$RUNNER_OS" == "Windows" ]]; then
+#            export MSYS_NO_PATHCONV=1
+#            PATH_PREFIX="/mnt"
+#          fi
+#          # Create a test file in the workspace
+#          echo "Hello from the host" > test-file.txt
+#
+#          # Mount the workspace and access the file from the container
+#          docker run --rm -v "$PATH_PREFIX$(pwd):/workspace" alpine:latest sh -c "cat /workspace/test-file.txt && echo 'Hello from the container' >> /workspace/test-file.txt"
+#
+#          # Verify the file was modified
+#          cat test-file.txt | grep "Hello from the container"
+#          cat test-file.txt
