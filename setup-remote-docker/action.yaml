@@ -62,6 +62,49 @@ runs:
         echo "::endgroup::"
 
     # ===================================================================
+    # STEP 1.1: Docker Client Installation (Windows only)
+    # ===================================================================
+    - name: Install Docker client on Windows
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Write-Host "::group::🐳 Installing Docker client on Windows"
+
+        # Check if Docker is already installed
+        try {
+          $dockerVersion = docker --version 2>$null
+          if ($dockerVersion) {
+            Write-Host "✅ Docker client is already installed"
+            Write-Host "📋 Current version: $dockerVersion"
+            Write-Host "::endgroup::"
+            return
+          }
+        }
+        catch {
+          # Docker not found, continue with installation
+        }
+
+        Write-Host "📦 Installing Docker client via winget..."
+
+        try {
+          winget install --id Docker.DockerCLI --silent --accept-package-agreements --accept-source-agreements
+        
+          # Refresh environment variables
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        
+          $dockerVersion = docker --version
+          Write-Host "✅ Docker client installed successfully" 
+          Write-Host "📋 Installed version: $dockerVersion"
+        }
+        catch {
+          Write-Host "❌ Failed to install Docker client via winget"
+          Write-Host "::endgroup::"
+          exit 1
+        }
+
+        Write-Host "::endgroup::"
+
+    # ===================================================================
     # STEP 2: SMB Share Configuration (Optional)
     # ===================================================================
     - name: Configure SMB share parameters
