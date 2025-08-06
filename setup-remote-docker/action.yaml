@@ -84,56 +84,41 @@ runs:
           # Docker not found, continue with installation
         }
         
-        Write-Host "Installing Docker client via winget..."
+        Write-Host "Installing Docker client via Chocolatey..."
         
-        # Check if winget is available
+        # Check if Chocolatey is available
         try {
-          $wingetVersion = winget --version 2>$null
-          Write-Host "Winget version: $wingetVersion"
+          $chocoVersion = choco --version 2>$null
+          Write-Host "Chocolatey version: $chocoVersion"
         }
         catch {
-          Write-Host "Winget is not available on this system"
+          Write-Host "Chocolatey is not available on this system"
           Write-Host "::endgroup::"
           exit 1
         }
         
-        # Search for Docker package first
-        Write-Host "Searching for Docker CLI package..."
+        # Install Docker CLI using Chocolatey
         try {
-          winget search Docker.DockerCLI
-        }
-        catch {
-          Write-Host "Could not search for Docker package: $_"
-        }
-        
-        # Attempt installation with detailed error output
-        Write-Host "Attempting to install Docker CLI..."
-        try {
-          $result = winget install --id Docker.DockerCLI --silent --accept-package-agreements --accept-source-agreements 2>&1
-          Write-Host "Installation output: $result"
-        
-          if ($LASTEXITCODE -ne 0) {
-            throw "Winget installation failed with exit code: $LASTEXITCODE"
-          }
+          choco install docker-cli -y --no-progress
         
           # Refresh environment variables
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
         
           $dockerVersion = docker --version
-          Write-Host "Docker client installed successfully" 
+          Write-Host "Docker client installed successfully"
           Write-Host "Installed version: $dockerVersion"
         }
         catch {
-          Write-Host "Failed to install Docker client via winget"
+          Write-Host "Failed to install Docker client via Chocolatey"
           Write-Host "Error details: $_"
-          Write-Host "Exit code: $LASTEXITCODE"
           Write-Host "::endgroup::"
           exit 1
         }
         
         Write-Host "::endgroup::"
+      
 
-    # ===================================================================
+      # ===================================================================
     # STEP 2: SMB Share Configuration (Optional)
     # ===================================================================
     - name: Configure SMB share parameters
