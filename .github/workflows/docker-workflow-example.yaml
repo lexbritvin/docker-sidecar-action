@@ -61,6 +61,10 @@ jobs:
           private-key: ${{ needs.client-ssh-key.outputs.private-key }}
           use-remote-share: 'true'
 
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
+
       - name: Run Docker container with volume mount
         shell: bash
         run: |
