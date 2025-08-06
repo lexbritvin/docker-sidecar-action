@@ -69,7 +69,7 @@ runs:
       shell: powershell
       run: |
         Write-Host "::group::Installing Docker client on Windows"
-
+        
         # Check if Docker is already installed
         try {
           $dockerVersion = docker --version 2>$null
@@ -83,11 +83,38 @@ runs:
         catch {
           # Docker not found, continue with installation
         }
-
+        
         Write-Host "Installing Docker client via winget..."
-
+        
+        # Check if winget is available
         try {
-          winget install --id Docker.DockerCLI --accept-package-agreements --accept-source-agreements
+          $wingetVersion = winget --version 2>$null
+          Write-Host "Winget version: $wingetVersion"
+        }
+        catch {
+          Write-Host "Winget is not available on this system"
+          Write-Host "::endgroup::"
+          exit 1
+        }
+        
+        # Search for Docker package first
+        Write-Host "Searching for Docker CLI package..."
+        try {
+          winget search Docker.DockerCLI
+        }
+        catch {
+          Write-Host "Could not search for Docker package: $_"
+        }
+        
+        # Attempt installation with detailed error output
+        Write-Host "Attempting to install Docker CLI..."
+        try {
+          $result = winget install --id Docker.DockerCLI --silent --accept-package-agreements --accept-source-agreements 2>&1
+          Write-Host "Installation output: $result"
+        
+          if ($LASTEXITCODE -ne 0) {
+            throw "Winget installation failed with exit code: $LASTEXITCODE"
+          }
         
           # Refresh environment variables
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -98,10 +125,12 @@ runs:
         }
         catch {
           Write-Host "Failed to install Docker client via winget"
+          Write-Host "Error details: $_"
+          Write-Host "Exit code: $LASTEXITCODE"
           Write-Host "::endgroup::"
           exit 1
         }
-
+        
         Write-Host "::endgroup::"
 
     # ===================================================================
