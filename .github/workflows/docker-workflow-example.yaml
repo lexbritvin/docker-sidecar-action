@@ -38,7 +38,7 @@ jobs:
           use-bore: 'true'
 
       - name: ⚡ Wait for related jobs
-        uses: lexbritvin/wait-action@v1
+        uses: lexbritvin/wait-action@v2
         with:
           condition-type: 'job'
           job-name: '[wait] '

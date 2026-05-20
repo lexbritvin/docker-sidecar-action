@@ -181,7 +181,7 @@ runs:
     # STEP 3: Wait for Docker Sidecar and Download Artifacts
     # ===================================================================
     - name: Wait for Docker sidecar to start
-      uses: lexbritvin/wait-action@v1
+      uses: lexbritvin/wait-action@v2
       with:
         condition-type: 'artifact'
         artifact-name: ${{ inputs.docker-connection-artifact-name }}
@@ -426,7 +426,7 @@ runs:
     # STEP 6: Establish SSH Tunnels
     # ===================================================================
     - name: Establish SSH tunnels for Docker and SMB
-      uses: lexbritvin/ssh-action@v1
+      uses: lexbritvin/ssh-action@v2
       with:
         host: ${{ steps.connection.outputs.ssh-host }}
         port: ${{ steps.connection.outputs.ssh-port }}
@@ -443,7 +443,7 @@ runs:
     # STEP 7: Configure Remote SMB Mount (if enabled)
     # ===================================================================
     - name: Configure SMB mount on remote host
-      uses: lexbritvin/ssh-action@v1
+      uses: lexbritvin/ssh-action@v2
       if: inputs.use-remote-share == 'true'
       with:
         host: ${{ steps.connection.outputs.ssh-host }}
